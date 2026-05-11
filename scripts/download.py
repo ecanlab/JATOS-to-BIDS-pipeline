@@ -40,8 +40,7 @@ class JatosDownloader:
     url = f'{self.base_url}studies/properties'
     response = self._fetch(url)
     data = response.json().get("data", [])
-    response = self._fetch(url)
-
+    
     self.project_ids = ([(item.get("id"), item.get("title")) for item in data])
 
   def get_study_metadata(self, study_id: int):
