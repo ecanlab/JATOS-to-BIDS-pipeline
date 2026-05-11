@@ -13,7 +13,7 @@ class JatosDownloader:
     self.project_ids: list[tuple[int,str]]
     self.project_metadata: list[tuple[int,dict]]
 
-  def _fetch(self, url: str, payload: [dict] | None) ->requests.models.Response:
+  def _fetch(self, url: str, payload: dict | None = None) ->requests.models.Response:
     '''
     Helper function that fetches responses from a url.
     ARGS: url (str): A url string that should begin with http://
@@ -40,7 +40,7 @@ class JatosDownloader:
     url = f'{self.base_url}studies/properties'
     response = self._fetch(url)
     data = response.json().get("data", [])
-    
+
     self.project_ids = ([(item.get("id"), item.get("title")) for item in data])
 
   def get_study_metadata(self, study_id: int):
@@ -66,6 +66,9 @@ if __name__ == "__main__":
   load_dotenv()
   base_url  = os.getenv('base_url')
   api_token = os.getenv('api_token')
+
+  if not base_url or not api_token:
+    raise ValueError('base_url and api_token must be set in .env file')
 
   downloader = JatosDownloader(base_url, api_token)
   downloader.run()
