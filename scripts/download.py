@@ -9,7 +9,7 @@ class JatosDownloader:
     self.headers = {'Authorization': f'Bearer {api_token}'}
     self.session = requests.Session()
     self.session.headers.update(self.headers)
-    self.project_ids = [(int,str)]
+    self.project_ids: [(int,str)]
 
   def _fetch(self, url) -> requests.exceptions.RequestException:
     '''
