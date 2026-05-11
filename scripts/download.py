@@ -1,5 +1,6 @@
 import os
 import requests
+import json
 from dotenv import load_dotenv
 
 
@@ -9,18 +10,23 @@ class JatosDownloader:
     self.headers = {'Authorization': f'Bearer {api_token}'}
     self.session = requests.Session()
     self.session.headers.update(self.headers)
-    self.project_ids: [(int,str)]
+    self.project_ids: list[tuple[int,str]]
+    self.project_metadata: list[tuple[int,dict]]
 
-  def _fetch(self, url) -> requests.exceptions.RequestException:
+  def _fetch(self, url: str, payload: [dict] | None) ->requests.models.Response:
     '''
-    _fetch is a helper function that fetches responses from a url.
+    Helper function that fetches responses from a url.
     ARGS: url (str): A url string that should begin with http://
+          payload (dict): Data to send with the request
     PRE: url should start with "http://".
     RETURNS: A requests.models.Response
     '''
     try:
-      response = self.session.get(url)
+      response = self.session.get(url, params=payload)
       response.raise_for_status()
+      # Cookies need to be cleard after each call otherwise the call will be
+      # redirected to the login page.
+      self.session.cookies.clear_session_cookies()
       return response
     except requests.exceptions.RequestException as e:
       raise SystemExit(e)
@@ -28,17 +34,32 @@ class JatosDownloader:
   def get_project_ids(self):
     '''
     Fetches all IDs and project titles.
-    SIDE EFFECT: Update self.project_ids with a list with tuples where the first
+    SIDE EFFECT: Updates self.project_ids with a list of tuples where the first
                  element is the id and the second is the title.
     '''
     url = f'{self.base_url}studies/properties'
     response = self._fetch(url)
     data = response.json().get("data", [])
+    response = self._fetch(url)
+
     self.project_ids = ([(item.get("id"), item.get("title")) for item in data])
+
+  def get_study_metadata(self, study_id: int):
+    '''
+    Fetches metadata for a study.
+    ARGS: study_id (int): The study id
+    SIDE EFFECT: Updates self.study_metadata with a list of tuples where the
+                 first element is the result id and the second is the metadata
+                 for that participant.
+    '''
+    url = f'{self.base_url}results/metadata'
+    response = self._fetch(url, {'download': False, 'studyId': study_id})
+    #TODO: update self.project_metadata
 
   def run(self):
     try:
       self.get_project_ids()
+      self.get_study_metadata(8)
     finally:
       self.session.close()
 
