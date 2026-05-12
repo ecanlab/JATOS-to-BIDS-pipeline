@@ -1,4 +1,5 @@
 import os
+import re
 import requests
 from dotenv import load_dotenv
 
@@ -57,11 +58,25 @@ class JatosDownloader:
       return data[0].get('studyResults')
     return None
 
+  def get_part_of_string(self, s: str, regex: str) -> str:
+    '''
+    Gets the matching regex from a string.
+    PRE: regex should be a raw string, r''
+    ARGS: study_title (str): The study title that contains the project name
+          regex       (str): Raw string to match against the study_title
+    RETURNS: The matching string.
+    '''
+    result = re.search(regex, s)
+
+    if result:
+      return result.group(0)
+
   def run(self):
     try:
       self.project_ids = self.get_project_ids()
       for project_id in self.project_ids:
         study_metadata = self.get_study_metadata(project_id[0])
+        project_title  = self.get_part_of_string(project_id[1], r'^[^_]+')
 
     finally:
       self.session.close()
