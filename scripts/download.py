@@ -33,7 +33,7 @@ class JatosDownloader:
     except requests.exceptions.RequestException as e:
       raise SystemExit(e)
 
-  def get_project_ids(self) -> None:
+  def get_project_ids(self) -> tuple[int,str]:
     '''
     Fetches all IDs and project titles.
     SIDE EFFECT: Updates self.project_ids with a list of tuples where the first
@@ -43,7 +43,7 @@ class JatosDownloader:
     response = self._fetch(url)
     data = response.json().get("data", [])
 
-    self.project_ids = ([(item.get("id"), item.get("title")) for item in data])
+    return ([(item.get("id"), item.get("title")) for item in data])
 
   def get_study_metadata(self, study_id: int) -> list[dict] | None:
     '''
@@ -60,7 +60,7 @@ class JatosDownloader:
 
   def run(self):
     try:
-      self.get_project_ids()
+      self.project_ids = self.get_project_ids()
       for project_id in self.project_ids:
         self.study_metadata = self.get_study_metadata(project_id[0])
 
