@@ -36,8 +36,8 @@ class JatosDownloader:
   def get_project_ids(self) -> tuple[int,str]:
     '''
     Fetches all IDs and project titles.
-    SIDE EFFECT: Updates self.project_ids with a list of tuples where the first
-                 element is the id and the second is the title.
+    RETURNS: A list of tuples where the first element is the id and the second
+             is the title.
     '''
     url = f'{self.base_url}studies/properties'
     response = self._fetch(url)
