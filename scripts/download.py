@@ -10,7 +10,6 @@ class JatosDownloader:
     self.session = requests.Session()
     self.session.headers.update(self.headers)
     self.project_ids: list[tuple[int,str]]
-    self.project_metadata: list[dict]
 
   def _fetch(self,
              url: str,
@@ -32,7 +31,7 @@ class JatosDownloader:
     except requests.exceptions.RequestException as e:
       raise SystemExit(e)
 
-  def get_project_ids(self) -> tuple[int,str]:
+  def get_project_ids(self) -> list[tuple[int,str]]:
     '''
     Fetches all IDs and project titles.
     RETURNS: A list of tuples where the first element is the id and the second
@@ -56,12 +55,13 @@ class JatosDownloader:
     data = response.json().get("data", [])
     if data:
       return data[0].get('studyResults')
+    return None
 
   def run(self):
     try:
       self.project_ids = self.get_project_ids()
       for project_id in self.project_ids:
-        self.study_metadata = self.get_study_metadata(project_id[0])
+        study_metadata = self.get_study_metadata(project_id[0])
 
     finally:
       self.session.close()
