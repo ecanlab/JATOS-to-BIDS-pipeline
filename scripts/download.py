@@ -11,9 +11,11 @@ class JatosDownloader:
     self.session = requests.Session()
     self.session.headers.update(self.headers)
     self.project_ids: list[tuple[int,str]]
-    self.project_metadata: list[tuple[int,dict]]
+    self.project_metadata: list[dict]
 
-  def _fetch(self, url: str, payload: dict | None = None) ->requests.models.Response:
+  def _fetch(self,
+             url: str,
+             payload: dict | None = None) -> requests.models.Response:
     '''
     Helper function that fetches responses from a url.
     ARGS: url (str): A url string that should begin with http://
@@ -31,7 +33,7 @@ class JatosDownloader:
     except requests.exceptions.RequestException as e:
       raise SystemExit(e)
 
-  def get_project_ids(self):
+  def get_project_ids(self) -> None:
     '''
     Fetches all IDs and project titles.
     SIDE EFFECT: Updates self.project_ids with a list of tuples where the first
@@ -43,22 +45,25 @@ class JatosDownloader:
 
     self.project_ids = ([(item.get("id"), item.get("title")) for item in data])
 
-  def get_study_metadata(self, study_id: int):
+  def get_study_metadata(self, study_id: int) -> list[dict] | None:
     '''
-    Fetches metadata for a study.
+    Fetches study result metadata for a study.
     ARGS: study_id (int): The study id
-    SIDE EFFECT: Updates self.study_metadata with a list of tuples where the
-                 first element is the result id and the second is the metadata
-                 for that participant.
+    RETURNS: A list with dictionaries where every element is the metadata for a
+             result.
     '''
     url = f'{self.base_url}results/metadata'
     response = self._fetch(url, {'download': False, 'studyId': study_id})
-    #TODO: update self.project_metadata
+    data = response.json().get("data", [])
+    if data:
+      return data[0].get('studyResults')
 
   def run(self):
     try:
       self.get_project_ids()
-      self.get_study_metadata(8)
+      for project_id in self.project_ids:
+        self.study_metadata = self.get_study_metadata(project_id[0])
+
     finally:
       self.session.close()
 
