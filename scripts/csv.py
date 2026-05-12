@@ -1,7 +1,7 @@
 import os
 import csv
 
-class Csv:
+class CsvHandler:
     """This class handels csv files.
 
     The class makes the folder path if it dose not exist. It opens the
