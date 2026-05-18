@@ -11,7 +11,6 @@ class JatosDownloader:
     self.base_url = base_url
     self.headers = {'Authorization': f'Bearer {api_token}'}
     self.project_root = Path(project_root)
-    print(project_root)
     self.session = requests.Session()
     self.session.headers.update(self.headers)
     self.project_ids: list[tuple[int,str]]
