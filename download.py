@@ -1,13 +1,17 @@
 import os
 import re
 import requests
+import config
+from pathlib import Path
 from dotenv import load_dotenv
-
+from csvHandler import CsvHandler
 
 class JatosDownloader:
-  def __init__(self, base_url: str, api_token: str):
+  def __init__(self, base_url: str, api_token: str, project_root: str):
     self.base_url = base_url
     self.headers = {'Authorization': f'Bearer {api_token}'}
+    self.project_root = Path(project_root)
+    print(project_root)
     self.session = requests.Session()
     self.session.headers.update(self.headers)
     self.project_ids: list[tuple[int,str]]
@@ -77,6 +81,11 @@ class JatosDownloader:
       for project_id in self.project_ids:
         study_metadata = self.get_study_metadata(project_id[0])
         project_title  = self.get_part_of_string(project_id[1], r'^[^_]+')
+        csv = CsvHandler(
+          self.project_root / project_title / config.RESULT_INDEX,
+          config.RESULT_INDEX_HEADERS
+        )
+        csv.close()
 
     finally:
       self.session.close()
@@ -85,9 +94,10 @@ if __name__ == "__main__":
   load_dotenv()
   base_url  = os.getenv('base_url')
   api_token = os.getenv('api_token')
+  project_root = os.getenv('project_root')
 
-  if not base_url or not api_token:
+  if not base_url or not api_token or not project_root:
     raise ValueError('base_url and api_token must be set in .env file')
 
-  downloader = JatosDownloader(base_url, api_token)
+  downloader = JatosDownloader(base_url, api_token, project_root)
   downloader.run()
