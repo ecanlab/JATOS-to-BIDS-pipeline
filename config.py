@@ -11,4 +11,4 @@ RESULT_INDEX_HEADERS = [
 ]
 
 # Regex
-REGEX_TITLE = r'^[^_]+'
+REGEX_PROJECT_TITLE = r'^[^_]+'
