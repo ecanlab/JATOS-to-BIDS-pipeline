@@ -18,14 +18,13 @@ class CsvHandler:
     self.header = header
     self.write_header = False
 
-    if not self.filepath.exists:
-      write_header = True
+    if not self.filepath.exists():
+      self.write_header = True
 
     Path(self.filepath).parent.mkdir(parents=True, exist_ok=True)
 
     self.f = open(self.filepath, 'a+')
     self.writer = csv.writer(self.f)
-
     if self.write_header and self.header:
       self.writer.writerow(self.header)
 
