@@ -28,8 +28,8 @@ class CsvHandler:
     if self.write_header and self.header:
       self.writer.writerow(self.header)
 
-  def write_row(self, row_data):
-    self.writerow(row_data)
+  def write_row(self, row_data: list[str]):
+    self.writer.writerow(row_data)
     self.f.flush()
 
   def close(self):
