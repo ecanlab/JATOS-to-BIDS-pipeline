@@ -1,7 +1,8 @@
 import os
 import re
-import requests
 import config
+import datetime
+import requests
 from pathlib import Path
 from dotenv import load_dotenv
 from csvHandler import CsvHandler
@@ -15,9 +16,11 @@ class JatosDownloader:
     self.session.headers.update(self.headers)
     self.project_ids: list[tuple[int,str]]
 
-  def _fetch(self,
-             url: str,
-             payload: dict | None = None) -> requests.models.Response:
+  def _fetch(
+      self,
+      url: str,
+      payload: dict | None = None
+  ) -> requests.models.Response:
     '''
     Helper function that fetches responses from a url.
     ARGS: url (str): A url string that should begin with http://
@@ -45,7 +48,8 @@ class JatosDownloader:
     response = self._fetch(url)
     data = response.json().get("data", [])
 
-    return ([(item.get("id"), item.get("title")) for item in data])
+    return ([(item.get('id'), item.get('uuid'), item.get('title'))
+             for item in data])
 
   def get_study_metadata(self, study_id: int) -> list[dict] | None:
     '''
@@ -63,10 +67,10 @@ class JatosDownloader:
 
   def get_part_of_string(self, s: str, regex: str) -> str:
     '''
-    Gets the matching regex from a string.
+    Get the matching regex from a string.
     PRE: regex should be a raw string, r''
-    ARGS: study_title (str): The study title that contains the project name
-          regex       (str): Raw string to match against the study_title
+    ARGS: study_title (str): The study title that contains the project name.
+          regex       (str): Raw string to match against the study_title.
     RETURNS: The matching string.
     '''
     result = re.search(regex, s)
@@ -74,16 +78,54 @@ class JatosDownloader:
     if result:
       return result.group(0)
 
+  def get_result_index_values(
+      self,
+      metadata: dict[str],
+      project_id: list[str]
+  ) -> list[str]:
+    '''
+    Get the result index values from a studies metadata formated as a dictonary.
+    PRE: metadata should be a dictonary.
+         project_id should contain study id, study uuid and study title.
+    ARGS: metadata (dict[str]): A dictonary with metadata from a study.
+          project_id (list[str]): A list that contains study id, uuid and title.
+    RETURNS: A list with strings.
+    '''
+    data = []
+    data.append(project_id[2])
+    data.append(metadata.get('id', None))
+    data.append(metadata.get('uuid', None))
+    data.append(project_id[0])
+    data.append(project_id[1])
+    data.append(metadata.get('startDate', None))
+    data.append(metadata.get('lastSeenDate', None))
+    data.append(metadata.get('duration', None))
+    data.append(metadata.get('urlQueryParameters', None).get('pid', None))
+    data.append(metadata.get('studyState', None))
+    data.append(datetime.date.today())
+    data.append('False')
+
+    return data
+
   def run(self):
     try:
       self.project_ids = self.get_project_ids()
       for project_id in self.project_ids:
         study_metadata = self.get_study_metadata(project_id[0])
-        project_title  = self.get_part_of_string(project_id[1], r'^[^_]+')
+        project_title  = self.get_part_of_string(
+          project_id[2],
+          config.REGEX_PROJECT_TITLE
+        )
         csv = CsvHandler(
           self.project_root / project_title / config.RESULT_INDEX,
           config.RESULT_INDEX_HEADERS
         )
+        try:
+          for row in study_metadata:
+            data = self.get_result_index_values(row, project_id)
+            csv.write_row(data)
+        except Exception as e:
+          continue
         csv.close()
 
     finally:
