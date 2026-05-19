@@ -23,7 +23,7 @@ class CsvHandler:
 
     Path(self.filepath).parent.mkdir(parents=True, exist_ok=True)
 
-    self.f = open(self.filepath, 'a+')
+    self.f = open(self.filepath, 'a+', newline='')
     self.writer = csv.writer(self.f)
     if self.write_header and self.header:
       self.writer.writerow(self.header)
