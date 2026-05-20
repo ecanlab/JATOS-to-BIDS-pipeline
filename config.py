@@ -1,3 +1,4 @@
+import datetime
 from pathlib import Path
 
 # Paths
@@ -12,3 +13,9 @@ RESULT_INDEX_HEADERS = [
 
 # Regex
 REGEX_PROJECT_TITLE = r'^[^_]+'
+
+# Time
+TIME_FORMAT = '%Y-%m-%d %H:%M:%S'
+
+# Get the local timezone
+LOCAL_TZ = datetime.datetime.now().astimezone().tzinfo
