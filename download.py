@@ -1,9 +1,11 @@
 import os
 import re
+import utils
 import config
 import datetime
 import requests
 from pathlib import Path
+from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 from csvHandler import CsvHandler
 
@@ -97,12 +99,19 @@ class JatosDownloader:
     data.append(metadata.get('uuid', None))
     data.append(project_id[0])
     data.append(project_id[1])
-    data.append(metadata.get('startDate', None))
-    data.append(metadata.get('lastSeenDate', None))
+
+    date_start = metadata.get('startDate', None)
+    date_start_local_tz = utils.convert_to_local_tz(date_start)
+    data.append(date_start_local_tz)
+
+    date_last_seen = metadata.get('lastSeenDate', None)
+    date_last_seen_local_tz = utils.convert_to_local_tz(date_last_seen)
+    data.append(date_last_seen_local_tz)
+
     data.append(metadata.get('duration', None))
     data.append(metadata.get('urlQueryParameters', None).get('pid', None))
     data.append(metadata.get('studyState', None))
-    data.append(datetime.date.today())
+    data.append(datetime.datetime.now().strftime(config.TIME_FORMAT))
     data.append('False')
 
     return data
@@ -125,6 +134,7 @@ class JatosDownloader:
             data = self.get_result_index_values(row, project_id)
             csv.write_row(data)
         except Exception as e:
+          print(e)
           continue
         csv.close()
 
