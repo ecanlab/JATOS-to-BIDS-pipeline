@@ -1,11 +1,9 @@
 import os
-import re
 import utils
 import config
 import datetime
 import requests
 from pathlib import Path
-from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 from csvHandler import CsvHandler
 
@@ -67,19 +65,6 @@ class JatosDownloader:
       return data[0].get('studyResults')
     return None
 
-  def get_part_of_string(self, s: str, regex: str) -> str:
-    '''
-    Get the matching regex from a string.
-    PRE: regex should be a raw string, r''
-    ARGS: study_title (str): The study title that contains the project name.
-          regex       (str): Raw string to match against the study_title.
-    RETURNS: The matching string.
-    '''
-    result = re.search(regex, s)
-
-    if result:
-      return result.group(0)
-
   def get_result_index_values(
       self,
       metadata: dict[str],
@@ -116,12 +101,13 @@ class JatosDownloader:
 
     return data
 
+
   def run(self):
     try:
       self.project_ids = self.get_project_ids()
       for project_id in self.project_ids:
         study_metadata = self.get_study_metadata(project_id[0])
-        project_title  = self.get_part_of_string(
+        project_title  = utils.get_part_of_string(
           project_id[2],
           config.REGEX_PROJECT_TITLE
         )
@@ -129,12 +115,14 @@ class JatosDownloader:
           self.project_root / project_title / config.RESULT_INDEX,
           config.RESULT_INDEX_HEADERS
         )
+        result_index_uuid_set = set(csv.get_column('result_uuid'))
         try:
           for row in study_metadata:
-            data = self.get_result_index_values(row, project_id)
-            csv.write_row(data)
+            if not row.get('uuid') in result_index_uuid_set:
+              data = self.get_result_index_values(row, project_id)
+              csv.write_row(data)
+
         except Exception as e:
-          print(e)
           continue
         csv.close()
 

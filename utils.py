@@ -1,5 +1,19 @@
+import re
 import config
 import datetime
+
+def get_part_of_string(s: str, regex: str) -> str:
+  '''
+  Get the matching regex from a string.
+  PRE: regex should be a raw string, r''
+  ARGS: study_title (str): The study title that contains the project name.
+        regex       (str): Raw string to match against the study_title.
+  RETURNS: The matching string.
+  '''
+  result = re.search(regex, s)
+
+  if result:
+    return result.group(0)
 
 def convert_to_local_tz(date: int) -> datetime.datetime:
   '''
