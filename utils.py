@@ -14,6 +14,8 @@ def get_part_of_string(s: str, regex: str) -> str:
 
   if result:
     return result.group(0)
+  else:
+    return ''
 
 def convert_to_local_tz(date: int) -> datetime.datetime:
   '''
