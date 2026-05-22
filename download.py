@@ -1,6 +1,9 @@
 import os
+import io
+import gzip
 import utils
 import config
+import zipfile
 import datetime
 import requests
 from pathlib import Path
@@ -14,7 +17,6 @@ class JatosDownloader:
     self.project_root = Path(project_root)
     self.session = requests.Session()
     self.session.headers.update(self.headers)
-    self.project_ids: list[tuple[int,str]]
 
   def _fetch(
       self,
@@ -59,7 +61,7 @@ class JatosDownloader:
              result.
     '''
     url = f'{self.base_url}results/metadata'
-    response = self._fetch(url, {'download': False, 'studyId': study_id})
+    response = self._fetch(url, {'studyId': study_id})
     data = response.json().get("data", [])
     if data:
       return data[0].get('studyResults')
@@ -96,16 +98,47 @@ class JatosDownloader:
     data.append(metadata.get('duration', None))
     data.append(metadata.get('urlQueryParameters', None).get('pid', None))
     data.append(metadata.get('studyState', None))
-    data.append(datetime.datetime.now().strftime(config.TIME_FORMAT))
+    data.append('-')
+    #data.append(datetime.datetime.now().strftime(config.TIME_FORMAT))
     data.append('False')
 
     return data
 
+  def get_result_data(self, result_id: int) -> io.BytesIO:
+    '''
+    Fetches result data as a zip file.
+    ARGS: id (int): The id of a result.
+    RETURNS: _io.BytesIO.
+    '''
+    url = f'{self.base_url}results/data'
+    response = self._fetch(url, {'studyResultId': result_id})
+    bytes_data = io.BytesIO(response.content)
+
+    return bytes_data
+
+  def save_result_data(self, bytes_data: io.BytesIO, save_path: str):
+    '''
+    Save result data as a .gz file.
+    PRE: bytes_data must encode a ZipFile and only contain one .txt file.
+    ARGS: save_path (str): The path where the .gz file will be saved.
+    SIDE_EFFECT: Saves file to disk.
+    '''
+    zip_file = zipfile.ZipFile(bytes_data)
+    file_name = zip_file.namelist()[0]
+    with zip_file.open(file_name) as content:
+      data = content.read()
+
+    with gzip.open(save_path, 'wb') as f:
+      f.write(data)
+
+    content.close()
+    f.close()
 
   def run(self):
     try:
-      self.project_ids = self.get_project_ids()
-      for project_id in self.project_ids:
+      # Get metadata and update result index
+      project_ids = self.get_project_ids()
+      for project_id in project_ids:
         study_metadata = self.get_study_metadata(project_id[0])
         project_title  = utils.get_part_of_string(
           project_id[2],
@@ -125,6 +158,18 @@ class JatosDownloader:
         except Exception as e:
           continue
         csv.close()
+
+      # Get result data and update result index
+      project_dirs = [d for d in self.project_root.iterdir() if d.is_dir()]
+      for project_dir in project_dirs:
+        csv = CsvHandler(project_dir / config.RESULT_INDEX)
+        result_ids, pids = csv.get_column(['result_id', 'participant_id'])
+        for result_id, pid in zip(result_ids, pids):
+          bytes_data = self.get_result_data(result_id)
+          self.save_result_data(
+            bytes_data,
+            self.project_root / project_dir / config.RAW_DATA / f'pid-{pid}_task-.txt.gz')
+
 
     finally:
       self.session.close()
