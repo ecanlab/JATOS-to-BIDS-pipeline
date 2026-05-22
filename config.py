@@ -17,7 +17,7 @@ RESULT_INDEX_HEADERS = [
 REGEX_PROJECT_TITLE  = r'^[^_]+'
 REGEX_PROJECT_ARM    = r'arm-[\d]+'
 REGEX_PROJECT_SES    = r'ses-[\d]+'
-REGEX_PROJECT_TASK   = r'task-[\d]+'
+REGEX_PROJECT_TASK   = r'task-[\w]+'
 
 # Time
 TIME_FORMAT = '%Y-%m-%d %H:%M:%S'
