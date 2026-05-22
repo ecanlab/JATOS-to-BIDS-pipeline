@@ -2,7 +2,9 @@ import datetime
 from pathlib import Path
 
 # Paths
-RESULT_INDEX = Path('sourcedata/JATOS/raw_data/result_index.csv')
+RAW_DATA     = Path('sourcedata/JATOS/raw_data/')
+RESULT_INDEX = Path(RAW_DATA / 'result_index.csv')
+
 
 # Lists
 RESULT_INDEX_HEADERS = [
@@ -12,7 +14,10 @@ RESULT_INDEX_HEADERS = [
 ]
 
 # Regex
-REGEX_PROJECT_TITLE = r'^[^_]+'
+REGEX_PROJECT_TITLE  = r'^[^_]+'
+REGEX_PROJECT_ARM    = r'arm-[\d]+'
+REGEX_PROJECT_SES    = r'ses-[\d]+'
+REGEX_PROJECT_TASK   = r'task-[\d]+'
 
 # Time
 TIME_FORMAT = '%Y-%m-%d %H:%M:%S'
