@@ -6,9 +6,9 @@ import config
 import zipfile
 import datetime
 import requests
+import pandas as pd
 from pathlib import Path
 from dotenv import load_dotenv
-from csvHandler import CsvHandler
 
 class JatosDownloader:
   def __init__(self, base_url: str, api_token: str, project_root: str):
@@ -99,8 +99,7 @@ class JatosDownloader:
     data.append(metadata.get('urlQueryParameters', None).get('pid', None))
     data.append(metadata.get('studyState', None))
     data.append('-')
-    #data.append(datetime.datetime.now().strftime(config.TIME_FORMAT))
-    data.append('False')
+    data.append('not_downloaded')
 
     return data
 
@@ -116,11 +115,11 @@ class JatosDownloader:
 
     return bytes_data
 
-  def save_result_data(self, bytes_data: io.BytesIO, save_path: str):
+  def save_result_data(self, bytes_data: io.BytesIO, savepath: Path):
     '''
     Save result data as a .gz file.
     PRE: bytes_data must encode a ZipFile and only contain one .txt file.
-    ARGS: save_path (str): The path where the .gz file will be saved.
+    ARGS: save_path (Path): The path where the .gz file will be saved.
     SIDE_EFFECT: Saves file to disk.
     '''
     zip_file = zipfile.ZipFile(bytes_data)
@@ -128,48 +127,119 @@ class JatosDownloader:
     with zip_file.open(file_name) as content:
       data = content.read()
 
-    with gzip.open(save_path, 'wb') as f:
+    with gzip.open(savepath, 'wb') as f:
       f.write(data)
 
     content.close()
     f.close()
 
+  def _load_or_create_result_index(self, path: Path) -> pd.DataFrame:
+    '''
+    Helper function to load or create result index csv file.
+    ARGS: path (Path): Path to result index csv.
+    RETURNS: A DataFrame object with the content from the csv or only the
+             headers.
+    '''
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_file():
+      df = pd.read_csv(path)
+      return df
+    return pd.DataFrame(columns=config.RESULT_INDEX_HEADERS)
+
+  def _get_uuid_from_result_index(self, df: pd.DataFrame) -> set[str]:
+    return set(df['result_uuid'])
+
+  def _filter_new_results(self, study_metadata, existing_uuids):
+    results = []
+    for row in study_metadata:
+      if row.get('uuid') not in existing_uuids:
+        results.append(row)
+    return results
+
+  def _append_new_result(self, df, rows, id):
+    data = [self.get_result_index_values(row, id) for row in rows]
+    new_df = pd.DataFrame(data, columns=df.columns)
+    return pd.concat([new_df, df], ignore_index=True)
+
+  def process_project(self, id: int):
+    '''
+    Download results and update result index.
+    ARGS: id (int): The projects id.
+    SIDE_EFFECT: Saves files to disk.
+    '''
+    project_title  = utils.get_part_of_string(id[2], config.REGEX_PROJECT_TITLE)
+    result_index_path = self.project_root / project_title / config.RESULT_INDEX
+    df = self._load_or_create_result_index(result_index_path)
+    existing_uuids = self._get_uuid_from_result_index(df)
+    study_metadata = self.get_study_metadata(id[0])
+
+    new_rows = self._filter_new_results(study_metadata, existing_uuids)
+
+    if new_rows:
+      df = self._append_new_result(df, new_rows, id)
+      df.to_csv(result_index_path, index=False)
+
+  def _construct_result_filename(self, title: str, pid: int) -> str:
+    arm  = utils.get_part_of_string(title, config.REGEX_PROJECT_ARM)
+    ses  = utils.get_part_of_string(title, config.REGEX_PROJECT_SES)
+    task = utils.get_part_of_string(title, config.REGEX_PROJECT_TASK)
+    return f'pid-{pid}{arm}{ses}{task}.txt.gz'
+
+  def _process_and_save_result(
+      self,
+      id: int,
+      pid: str,
+      title: str,
+      target_dir: Path
+  ):
+    filename = self._construct_result_filename(title, id)
+    filepath = target_dir / filename
+
+    bytes_data = self.get_result_data(id)
+    self.save_result_data(bytes_data, filepath)
+
+  def download_results(self, directory: Path):
+    '''
+    Download all undownloaded results for a project and updates result index
+    file.
+    ARGS: directory (Path): The path to the project.
+    SIDE_EFFECT: Download and writes files to disk.
+    '''
+    result_index_path = directory / config.RESULT_INDEX
+    df = pd.read_csv(result_index_path)
+
+    raw_data_dir = self.project_root / directory / config.RAW_DATA
+
+    pending_rows = df[df['download_status'] != config.DOWNLOAD_COMPLETE]
+
+    for index, row in pending_rows.iterrows():
+      try:
+        self._process_and_save_result(
+          id=row['result_id'],
+          pid=row['participant_id'],
+          title=row['study_title'],
+          target_dir=raw_data_dir
+        )
+        df.at[index, 'download_status'] = config.DOWNLOAD_COMPLETE
+        df.at[index, 'downloaded_at']  = \
+          datetime.datetime.now().strftime(config.TIME_FORMAT)
+
+      except Exception as e:
+        print(e)
+        df.at[index, 'download_status'] = config.DOWNLOAD_FAILED
+    df.to_csv(result_index_path, index=False)
+
   def run(self):
     try:
-      # Get metadata and update result index
+      # Get project metadata and create result index
       project_ids = self.get_project_ids()
       for project_id in project_ids:
-        study_metadata = self.get_study_metadata(project_id[0])
-        project_title  = utils.get_part_of_string(
-          project_id[2],
-          config.REGEX_PROJECT_TITLE
-        )
-        csv = CsvHandler(
-          self.project_root / project_title / config.RESULT_INDEX,
-          config.RESULT_INDEX_HEADERS
-        )
-        result_index_uuid_set = set(csv.get_column('result_uuid'))
-        try:
-          for row in study_metadata:
-            if not row.get('uuid') in result_index_uuid_set:
-              data = self.get_result_index_values(row, project_id)
-              csv.write_row(data)
-
-        except Exception as e:
-          continue
-        csv.close()
+        self.process_project(project_id)
 
       # Get result data and update result index
       project_dirs = [d for d in self.project_root.iterdir() if d.is_dir()]
       for project_dir in project_dirs:
-        csv = CsvHandler(project_dir / config.RESULT_INDEX)
-        result_ids, pids = csv.get_column(['result_id', 'participant_id'])
-        for result_id, pid in zip(result_ids, pids):
-          bytes_data = self.get_result_data(result_id)
-          self.save_result_data(
-            bytes_data,
-            self.project_root / project_dir / config.RAW_DATA / f'pid-{pid}_task-.txt.gz')
-
+        self.download_results(project_dir)
 
     finally:
       self.session.close()
