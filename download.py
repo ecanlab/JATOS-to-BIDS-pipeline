@@ -2,6 +2,7 @@ import os
 import io
 import gzip
 import utils
+import logger
 import config
 import zipfile
 import datetime
@@ -17,6 +18,8 @@ class JatosDownloader:
     self.project_root = Path(project_root)
     self.session = requests.Session()
     self.session.headers.update(self.headers)
+
+    self.logger = logger.setupLogging(self.project_root / config.DOWNLOAD_LOG)
 
   def _fetch(
       self,
@@ -192,11 +195,22 @@ class JatosDownloader:
       title: str,
       target_dir: Path
   ):
-    filename = self._construct_result_filename(title, id)
+    filename = self._construct_result_filename(title, pid)
     filepath = target_dir / filename
 
     bytes_data = self.get_result_data(id)
     self.save_result_data(bytes_data, filepath)
+
+  def _get_all_project_dirs(self) -> list[Path]:
+    '''
+    Get all folders in root that have soursdata/JATOS folders.
+    Excludes all project that dose not have any data from JATOS.
+    '''
+    dirs = []
+    for dir in self.project_root.iterdir():
+      if Path(dir / config.JATOS_FOLDER).is_dir():
+        dirs.append(dir)
+    return dirs
 
   def download_results(self, directory: Path):
     '''
@@ -237,7 +251,7 @@ class JatosDownloader:
         self.process_project(project_id)
 
       # Get result data and update result index
-      project_dirs = [d for d in self.project_root.iterdir() if d.is_dir()]
+      project_dirs = self._get_all_project_dirs()
       for project_dir in project_dirs:
         self.download_results(project_dir)
 
