@@ -5,6 +5,9 @@ from pathlib import Path
 RAW_DATA     = Path('sourcedata/JATOS/raw_data/')
 RESULT_INDEX = Path(RAW_DATA / 'result_index.csv')
 
+# Download states
+DOWNLOAD_COMPLETE = 'completed'
+DOWNLOAD_FAILED   = 'failed'
 
 # Lists
 RESULT_INDEX_HEADERS = [
