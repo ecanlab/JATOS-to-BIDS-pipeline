@@ -1,0 +1,20 @@
+import logging
+from pathlib import Path
+
+def setupLogging(filepath: Path):
+  filepath.parent.mkdir(parents=True, exist_ok=True)
+
+  logger = logging.getLogger(__file__)
+  logger.setLevel(logging.DEBUG)
+
+  console_handler = logging.StreamHandler()
+  file_handler = logging.FileHandler(filepath.name)
+
+  formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+  console_handler.setFormatter(formatter)
+  file_handler.setFormatter(formatter)
+
+  logger.addHandler(console_handler)
+  logger.addHandler(file_handler)
+
+  return logger
