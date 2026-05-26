@@ -2,8 +2,10 @@ import datetime
 from pathlib import Path
 
 # Paths
+JATOS_FOLDER = Path('sourcedata/JATOS')
 RAW_DATA     = Path('sourcedata/JATOS/raw_data/')
 RESULT_INDEX = Path(RAW_DATA / 'result_index.csv')
+DOWNLOAD_LOG = Path('code/JATOS/logs/download.log')
 
 # Download states
 DOWNLOAD_COMPLETE = 'completed'
