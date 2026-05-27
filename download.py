@@ -19,6 +19,12 @@ class JatosDownloader:
     self.session = requests.Session()
     self.session.headers.update(self.headers)
 
+    self.current_study_id = ''
+    self.current_study_uuid = ''
+    self.current_pid = ''
+    self.current_study_title = ''
+
+
     self.logger = logger.setupLogging(self.project_root / config.DOWNLOAD_LOG)
 
   def _fetch(
@@ -34,6 +40,7 @@ class JatosDownloader:
     RETURNS: A requests.models.Response
     '''
     try:
+      self.logger.debug('Connection to %s...', url)
       response = self.session.get(url, params=payload)
       response.raise_for_status()
       # Cookies need to be cleard after each call otherwise the call will be
@@ -41,20 +48,28 @@ class JatosDownloader:
       self.session.cookies.clear_session_cookies()
       return response
     except requests.exceptions.RequestException as e:
-      raise SystemExit(e)
+      self.logger.critical('Failed to fetch %s: %s', url, e)
+      exit()
 
-  def get_project_ids(self) -> list[tuple[int,str]]:
+  def get_studies_info(self) -> tuple[list[int], list[str], list[str]]:
     '''
-    Fetches all IDs and project titles.
-    RETURNS: A list of tuples where the first element is the id and the second
-             is the title.
+    Fetches study titles and ids.
+    RETURNS: A three lists where the first is the ids, the second
+             is the uuids and the third is the titles.
     '''
+    self.logger.info('Fetching study titles and ids')
     url = f'{self.base_url}studies/properties'
     response = self._fetch(url)
-    data = response.json().get("data", [])
-
-    return ([(item.get('id'), item.get('uuid'), item.get('title'))
-             for item in data])
+    try:
+      data   = response.json().get("data", [])
+      ids    = [item.get('id') for item in data]
+      uuids  = [item.get('uuid') for item in data]
+      titles = [item.get('title') for item in data]
+      self.logger.info('Sucsesfully fetched study titles and ids')
+      return ids, uuids, titles
+    except Exception as e:
+      self.logger.ctitical('Failed to fetch study titles and ids: %s', e)
+      self.logger.debug('Response body: %s', response.text[:500])
 
   def get_study_metadata(self, study_id: int) -> list[dict] | None:
     '''
@@ -64,47 +79,68 @@ class JatosDownloader:
              result.
     '''
     url = f'{self.base_url}results/metadata'
+    self.logger.info('Fetching metadata for study id %s', study_id)
     response = self._fetch(url, {'studyId': study_id})
-    data = response.json().get("data", [])
-    if data:
-      return data[0].get('studyResults')
-    return None
+    try:
+      data = response.json().get("data", [])
+      study_result = data[0].get('studyResults', None)
+      self.logger.info('Sucsesfully fetched metadat for study id %s', study_id)
+      return study_result
+    except Exception as e:
+      self.logger.error(
+        'Failed to fetch metadat for study id %s: %s', study_id, e
+      )
+      return None
 
   def get_result_index_values(
       self,
       metadata: dict[str],
-      project_id: list[str]
   ) -> list[str]:
     '''
     Get the result index values from a studies metadata formated as a dictonary.
     PRE: metadata should be a dictonary.
-         project_id should contain study id, study uuid and study title.
     ARGS: metadata (dict[str]): A dictonary with metadata from a study.
-          project_id (list[str]): A list that contains study id, uuid and title.
+          study_id (list[str]): A list that contains study id, uuid and title.
     RETURNS: A list with strings.
     '''
     data = []
-    data.append(project_id[2])
-    data.append(metadata.get('id', None))
-    data.append(metadata.get('uuid', None))
-    data.append(project_id[0])
-    data.append(project_id[1])
+    self.logger.info(
+      'Exctrating metadata values from study %s with id %s',
+      self.current_study_title, self.current_study_id
+    )
+    try:
+      data.append(self.current_study_title)
+      data.append(metadata.get('id', None))
+      data.append(metadata.get('uuid', None))
+      data.append(self.current_study_id)
+      data.append(self.current_study_uuid)
 
-    date_start = metadata.get('startDate', None)
-    date_start_local_tz = utils.convert_to_local_tz(date_start)
-    data.append(date_start_local_tz)
+      date_start = metadata.get('startDate', None)
+      date_start_local_tz = utils.convert_to_local_tz(date_start)
+      data.append(date_start_local_tz)
 
-    date_last_seen = metadata.get('lastSeenDate', None)
-    date_last_seen_local_tz = utils.convert_to_local_tz(date_last_seen)
-    data.append(date_last_seen_local_tz)
+      date_last_seen = metadata.get('lastSeenDate', None)
+      date_last_seen_local_tz = utils.convert_to_local_tz(date_last_seen)
+      data.append(date_last_seen_local_tz)
 
-    data.append(metadata.get('duration', None))
-    data.append(metadata.get('urlQueryParameters', None).get('pid', None))
-    data.append(metadata.get('studyState', None))
-    data.append('-')
-    data.append('not_downloaded')
-
+      data.append(metadata.get('duration', None))
+      data.append(metadata.get('urlQueryParameters', None).get('pid', None))
+      data.append(metadata.get('studyState', None))
+      data.append('-')
+      data.append('not_downloaded')
+      self.logger.info(
+        'Sucsesfully extracted metadata values from study %s with id %s',
+        self.current_study_title, self.current_study_id
+      )
+    except Exception as e:
+      self.logger.info(
+        'Sucsesfully extracted metadata values from study %s with id %s',
+        self.current_study_title, self.current_study_id
+      )
     return data
+
+  def _get_pid(self, metadata: dict[str]) -> str:
+    return metadata[0].get('urlQueryParameters', None).get('pid', None)
 
   def get_result_data(self, result_id: int) -> io.BytesIO:
     '''
@@ -113,8 +149,12 @@ class JatosDownloader:
     RETURNS: _io.BytesIO.
     '''
     url = f'{self.base_url}results/data'
+    self.logger.info('Fetching result data for result id %s', result_id)
     response = self._fetch(url, {'studyResultId': result_id})
     bytes_data = io.BytesIO(response.content)
+    self.logger.info(
+      'Sucsesfully fetched result data for result id %s', result_id
+    )
 
     return bytes_data
 
@@ -125,16 +165,18 @@ class JatosDownloader:
     ARGS: save_path (Path): The path where the .gz file will be saved.
     SIDE_EFFECT: Saves file to disk.
     '''
-    zip_file = zipfile.ZipFile(bytes_data)
-    file_name = zip_file.namelist()[0]
-    with zip_file.open(file_name) as content:
-      data = content.read()
+    self.logger.info('Trying to save data at: %s', savepath)
+    try:
+      zip_file = zipfile.ZipFile(bytes_data)
+      file_name = zip_file.namelist()[0]
+      with zip_file.open(file_name) as content:
+        data = content.read()
 
-    with gzip.open(savepath, 'wb') as f:
-      f.write(data)
-
-    content.close()
-    f.close()
+      with gzip.open(savepath, 'wb') as f:
+        f.write(data)
+      self.logger.info('Sucsesfully saved file %s', savepath.name)
+    except Exception as e:
+      self.logger.error('Failed to save file %s', savepath.name)
 
   def _load_or_create_result_index(self, path: Path) -> pd.DataFrame:
     '''
@@ -145,12 +187,13 @@ class JatosDownloader:
     '''
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_file():
+      self.logger.info('Found result_index_file.csv for %s', path)
       df = pd.read_csv(path)
       return df
+    self.logger.info(
+      'Did not find result_index_file.csv for %s creating one', path
+    )
     return pd.DataFrame(columns=config.RESULT_INDEX_HEADERS)
-
-  def _get_uuid_from_result_index(self, df: pd.DataFrame) -> set[str]:
-    return set(df['result_uuid'])
 
   def _filter_new_results(self, study_metadata, existing_uuids):
     results = []
@@ -159,27 +202,37 @@ class JatosDownloader:
         results.append(row)
     return results
 
-  def _append_new_result(self, df, rows, id):
-    data = [self.get_result_index_values(row, id) for row in rows]
+  def _append_new_result(self, df, rows):
+    data = [self.get_result_index_values(row) for row in rows]
     new_df = pd.DataFrame(data, columns=df.columns)
     return pd.concat([new_df, df], ignore_index=True)
 
-  def process_project(self, id: int):
+  def process_study(self, study_id: int, study_uuid: str, study_title):
     '''
     Download results and update result index.
-    ARGS: id (int): The projects id.
+    ARGS: study_id (int): The study id.
+          study_uuid (str): The study uuid.
+          title (str): The study title.
     SIDE_EFFECT: Saves files to disk.
     '''
-    project_title  = utils.get_part_of_string(id[2], config.REGEX_PROJECT_TITLE)
+    project_title = utils.get_part_of_string(
+      study_title,
+      config.REGEX_PROJECT_TITLE
+    )
     result_index_path = self.project_root / project_title / config.RESULT_INDEX
     df = self._load_or_create_result_index(result_index_path)
-    existing_uuids = self._get_uuid_from_result_index(df)
-    study_metadata = self.get_study_metadata(id[0])
+    existing_uuids = set(df['result_uuid'])
+    study_metadata = self.get_study_metadata(study_id)
+
+    self.current_study_id = study_id
+    self.current_study_uuid = study_uuid
+    self.current_pid = self._get_pid(study_metadata)
+    self.current_study_title = study_title
 
     new_rows = self._filter_new_results(study_metadata, existing_uuids)
 
     if new_rows:
-      df = self._append_new_result(df, new_rows, id)
+      df = self._append_new_result(df, new_rows)
       df.to_csv(result_index_path, index=False)
 
   def _construct_result_filename(self, title: str, pid: int) -> str:
@@ -246,9 +299,9 @@ class JatosDownloader:
   def run(self):
     try:
       # Get project metadata and create result index
-      project_ids = self.get_project_ids()
-      for project_id in project_ids:
-        self.process_project(project_id)
+      study_ids, study_uuids, titles = self.get_studies_info()
+      for study_id, study_uuid, title in zip(study_ids, study_uuids, titles):
+        self.process_study(study_id, study_uuid, title)
 
       # Get result data and update result index
       project_dirs = self._get_all_project_dirs()
