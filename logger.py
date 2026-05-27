@@ -17,8 +17,8 @@ def setupLogging(filepath: Path):
   file_handler_formatter = logging.Formatter(
     "%(asctime)s - %(levelname)s - %(message)s"
   )
-  console_handler.setFormatter(formatter)
-  file_handler.setFormatter(formatter)
+  console_handler.setFormatter(console_formatter)
+  file_handler.setFormatter(file_handler_formatter)
 
   logger.addHandler(console_handler)
   logger.addHandler(file_handler)
