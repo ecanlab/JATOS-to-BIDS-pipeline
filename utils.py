@@ -17,11 +17,11 @@ def get_part_of_string(s: str, regex: str) -> str:
   else:
     return ''
 
-def convert_to_local_tz(date: int) -> datetime.datetime:
+def convert_to_local_tz(date: float) -> str:
   '''
   Convert an int to local timezone with the format (YYYY-MM-DD HH-mm-ss)
   PRE: date must be a date reprecented as miliseconds.
-  ARGS: date (int): A date reprecented as miliseconds.
+  ARGS: date (str): A date reprecented as miliseconds.
   RETURN: A datetime.datetime object with the local timezone.
   '''
   # Convert the date in ms to UTC format
