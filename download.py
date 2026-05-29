@@ -2,15 +2,24 @@ import os
 import io
 import gzip
 import utils
-import logger
+import logging
 import config
 import zipfile
 import datetime
 import requests
 import pandas as pd
+import log as log_util
 from pathlib import Path
 from dotenv import load_dotenv
 from typing import Any, NoReturn
+from dataclasses import dataclass
+
+
+@dataclass
+class StudyInfo:
+  id: int
+  uuid: str
+  title: str
 
 class JatosDownloader:
   def __init__(
@@ -18,7 +27,7 @@ class JatosDownloader:
       base_url: str,
       api_token: str,
       project_root: str,
-      log):
+      log: logging.Logger):
 
     self.base_url = base_url
     self.headers = {'Authorization': f'Bearer {api_token}'}
@@ -37,67 +46,114 @@ class JatosDownloader:
   def _fetch(
       self,
       url: str,
-      payload: dict | None = None
+      payload: dict[str,Any] | None = None
   ) -> requests.models.Response:
-    '''
-    Helper function that fetches responses from a url.
-    ARGS: url (str): A url string that should begin with http://
-          payload (dict): Data to send with the request
-    PRE: url should start with "http://".
-    RETURNS: A requests.models.Response
-    '''
+    """Fetches a response from a URL.
+
+    Args:
+       url: URL that must begin with "http://" or "https://".
+       payload: Query parameters sent with the request.
+
+    Returns:
+      The HTTP response object.
+
+    Raises:
+      requests.exceptions.RequestException: If the request fails.
+    """
+    if not url.startswith(('http://', 'https://')):
+      self.log.error('The URL must start with "http://" or "https://".')
+      raise ValueError('The URL must start with "http://" or "https://".')
+
     try:
-      self.log.DEBUG('Connection to %s...', url)
+      self.log.debug('Connection to %s...', url)
+
       response = self.session.get(url, params=payload)
       response.raise_for_status()
-      # Cookies need to be cleard after each call otherwise the call will be
-      # redirected to the login page.
-      self.session.cookies.clear_session_cookies()
-      return response
-    except requests.exceptions.RequestException as e:
-      self.log.CRITICAL('Failed to fetch %s: %s', url, e)
-      raise SystemExit(1)
 
-  def get_studies_info(self) -> tuple[list[int], list[str], list[str]]:
-    '''
-    Fetches study titles and ids.
-    RETURNS: A three lists where the first is the ids, the second
-             is the uuids and the third is the titles.
-    '''
+      # Cookies need to be cleared after each call otherwise the request may be
+      # redirected to the login page.
+
+      self.session.cookies.clear_session_cookies()
+
+      return response
+
+    except requests.exceptions.RequestException as e:
+      self.log.critical('Failed to fetch from URL: %s: %s', url, e)
+      raise requests.exceptions.RequestException(
+        f'Could not fetch from URL: %s, %s', url, e
+      )
+
+  def get_studies_info(self) -> list[StudyInfo]:
+    """Fetches study ids, uuid and title from all studies on the JATOS server.
+
+    Returns:
+      A list of StudyInfo objects, each containing:
+        - Study ID
+        - Study UUID
+        - Study title
+
+    Raises:
+      requests.exceptions.JSONDecodeError: If the response could not be decoded
+      into JSON
+    """
     self.log.info('Fetching study titles and ids')
+
     url = f'{self.base_url}studies/properties'
     response = self._fetch(url)
+
     try:
-      data   = response.json().get("data", [])
-      ids    = [item.get('id') for item in data]
-      uuids  = [item.get('uuid') for item in data]
-      titles = [item.get('title') for item in data]
-      return ids, uuids, titles
-    except Exception as e:
-      self.log.ctitical('Failed to fetch study titles and ids: %s', e)
-      self.log.DEBUG('Response body: %s', response.text[:500])
-      raise SystemExit(1)
+      data = response.json()['data']
+
+      return [
+        StudyInfo(
+          id=item['id'],
+          uuid=item['uuid'],
+          title=item['title']
+        )
+        for item in data
+      ]
+
+    except requests.exceptions.JSONDecodeError as e:
+      self.log.critical('Invalid JSON response: %s', e)
+      raise
+    except KeyError as e:
+      self.log.error(
+        'Missing key in resposene. Make sure that JATOS save all metadata for'
+        'each study correctly. %s', e
+      )
+      raise
 
   def get_study_metadata(self, study_id: int) -> list[dict] | None:
-    '''
-    Fetches study result metadata for a study.
-    ARGS: study_id (int): The study id
-    RETURNS: A list with dictionaries where every element is the metadata for a
-             result.
+    '''Fetches study result metadata for a study.
+
+    Args:
+      study_id: The id of the study.
+
+    Returns:
+      A list with dictionaries where each element is metadata for a study.
+
+    Raises:
+      requests.exceptions.JSONDecodeError: If the response could not be decoded
+      into JSON
     '''
     url = f'{self.base_url}results/metadata'
     self.log.info('Fetching study metadata for study id %s', study_id)
     response = self._fetch(url, {'studyId': study_id})
     try:
-      data = response.json().get("data", [])
-      study_result = data[0].get('studyResults', None)
+      data = response.json()["data"]
+      study_result = data[0]['studyResults']
 
       return study_result
-    except Exception as e:
-      self.log.ERROR(
+
+    except requests.exceptions.JSONDecodeError as e:
+      self.log.critical('Invalid JSON response: %s', e)
+      raise
+
+    except KeyError as e:
+      self.log.error(
         'Failed to fetch metadata for study id %s: %s', study_id, e
       )
-      return None
+      raise
 
   def get_result_index_values(
       self,
@@ -146,7 +202,7 @@ class JatosDownloader:
       data.append('not_downloaded')
 
     except Exception as e:
-      self.log.ERROR(
+      self.log.error(
         'Failed to result extracted metadata values from study %s with id %s:'
         ' %s',
         self.current_study_title, self.current_result_id, e
@@ -190,7 +246,7 @@ class JatosDownloader:
       with gzip.open(savepath, 'wb') as f:
         f.write(data)
     except Exception as e:
-      self.log.ERROR('Failed to save file %s: %s', savepath.name, e)
+      self.log.error('Failed to save file %s: %s', savepath.name, e)
 
   def load_or_create_result_index(self, path: Path) -> pd.DataFrame:
     '''
@@ -225,31 +281,31 @@ class JatosDownloader:
     new_df = pd.DataFrame(data, columns=df.columns)
     return pd.concat([new_df, df], ignore_index=True)
 
-  def process_study(self, study_id: int, study_uuid: str, study_title: str):
-    '''
-    Download results and update result index.
-    ARGS: study_id (int): The study id.
-          study_uuid (str): The study uuid.
-          title (str): The study title.
-    SIDE_EFFECT: Saves files to disk.
+  def process_study(self, study: StudyInfo):
+    '''Download results and update result index.
+
+    Args:
+      study: Metadata about a study.
+
+    Side_effect: Saves files to disk.
     '''
     project_title = utils.get_part_of_string(
-      study_title,
+      study.title,
       config.REGEX_PROJECT_TITLE
     )
     result_index_path = self.project_root / project_title / config.RESULT_INDEX
-    study_metadata = self.get_study_metadata(study_id)
+    study_metadata = self.get_study_metadata(study.id)
 
     # Variables for logging
-    self.current_study_id = study_id
+    self.current_study_id = study.id
     self.current_pid = self._get_pid(study_metadata)
     if not self.current_pid:
-      self.log.warrning(
+      self.log.warning(
         'Could not get pid from study %s resultd id %s, all studies needs to'
         ' pid in urlQueryParameters or in data as either pid or id',
-        study_title, self.current_result_id
+        study.title, self.current_result_id
       )
-    self.current_study_title = study_title
+    self.current_study_title = study.title
     self.current_project_title = project_title
 
     df = self.load_or_create_result_index(result_index_path)
@@ -309,7 +365,7 @@ class JatosDownloader:
       try:
         self._process_and_save_result(
           result_id=row['result_id'],
-          pid=row['participant_id'], 
+          pid=row['participant_id'],
           title=row['study_title'],
           target_dir=raw_data_dir
         )
@@ -324,9 +380,9 @@ class JatosDownloader:
   def run(self):
     try:
       # Get project metadata and create result index
-      study_ids, study_uuids, titles = self.get_studies_info()
-      for study_id, study_uuid, title in zip(study_ids, study_uuids, titles):
-        self.process_study(study_id, study_uuid, title)
+      studies = self.get_studies_info()
+      for study in studies:
+        self.process_study(study)
 
       # Get result data and update result index
       project_dirs = self._get_all_project_dirs()
@@ -346,7 +402,7 @@ if __name__ == "__main__":
     print('base_url and api_token must be set in .env file')
     exit()
 
-  log = logger.setupLogging(project_root / config.DOWNLOAD_LOG)
+  log = log_util.setupLogging(project_root / config.DOWNLOAD_LOG)
   log.info('Configuration loaded successfully')
 
   downloader = JatosDownloader(base_url, api_token, project_root, log)
