@@ -113,17 +113,18 @@ class JatosDownloader:
         for item in data
       ]
 
-    except requests.exceptions.JSONDecodeError as e:
-      self.log.critical('Invalid JSON response: %s', e)
+    except requests.exceptions.JSONDecodeError:
+      self.log.exception('Invalid JSON response')
       raise
-    except KeyError as e:
-      self.log.error(
+
+    except KeyError:
+      self.log.exception(
         'Missing key in resposene. Make sure that JATOS save all metadata for'
-        'each study correctly. %s', e
+        'each study correctly.'
       )
       raise
 
-  def get_study_metadata(self, study_id: int) -> list[dict] | None:
+  def get_study_metadata(self, study_id: int) -> list[dict]:
     '''Fetches study result metadata for a study.
 
     Args:
@@ -140,84 +141,79 @@ class JatosDownloader:
     self.log.info('Fetching study metadata for study id %s', study_id)
     response = self._fetch(url, {'studyId': study_id})
     try:
-      data = response.json()["data"]
+      data = response.json()['data']
       study_result = data[0]['studyResults']
 
       return study_result
 
-    except requests.exceptions.JSONDecodeError as e:
-      self.log.critical('Invalid JSON response: %s', e)
+    except requests.exceptions.JSONDecodeError:
+      self.log.exception('Invalid JSON response')
       raise
 
-    except KeyError as e:
-      self.log.error(
-        'Failed to fetch metadata for study id %s: %s', study_id, e
-      )
+    except KeyError:
+      self.log.exception('Failed to fetch metadata for study id %s', study_id)
       raise
 
   def get_result_index_values(
       self,
       metadata: dict[str,Any]
   ) -> list[str | None]:
-    '''
-    Get the result index values from a studies metadata formated as a dictonary.
-    PRE: metadata should be a dictonary.
-    ARGS: metadata (dict[str]): A dictonary with metadata from a study.
-    RETURNS: A list with strings or None.
+    ''' Get the result index values from a studies metadata.
+
+    Args:
+      metadata: A dictonary with metadata from a study.
+
+    Returns:
+      A list with strings or None.
     '''
     data = []
 
-    try:
-      data.append(self.current_study_title)
+    data.append(self.current_study_title)
 
-      result_id = metadata.get('id', None)
-      data.append(result_id)
-      self.current_result_id = result_id
+    result_id = metadata.get('id', None)
+    data.append(result_id)
+    self.current_result_id = result_id
 
-      self.log.info(
-        'Extracting result metadata values from study %s with id %s',
-        self.current_study_title, self.current_result_id
-      )
+    self.log.info(
+      'Extracting result metadata values from study %s with id %s',
+      self.current_study_title, self.current_result_id
+    )
 
-      data.append(metadata.get('uuid', None))
+    data.append(metadata.get('uuid', None))
 
-      data.append(metadata.get('study_id', None))
-      data.append(metadata.get('study_uuid', None))
+    data.append(metadata.get('study_id', None))
+    data.append(metadata.get('study_uuid', None))
 
-      date_start = metadata.get('startDate', None)
-      if date_start:
-        date_start_local_tz = utils.convert_to_local_tz(date_start)
-      data.append(date_start_local_tz)
+    date_start = metadata.get('startDate', None)
+    if date_start:
+      date_start_local_tz = utils.convert_to_local_tz(date_start)
+    data.append(date_start_local_tz)
 
-      date_last_seen = metadata.get('lastSeenDate', None)
-      if date_last_seen:
-        date_last_seen_local_tz = utils.convert_to_local_tz(date_last_seen)
-      data.append(date_last_seen_local_tz)
+    date_last_seen = metadata.get('lastSeenDate', None)
+    if date_last_seen:
+      date_last_seen_local_tz = utils.convert_to_local_tz(date_last_seen)
+    data.append(date_last_seen_local_tz)
 
-      data.append(metadata.get('duration', None))
+    data.append(metadata.get('duration', None))
 
-      data.append(metadata.get('urlQueryParameters', {}).get('pid', None))
-      data.append(metadata.get('studyState', None))
-      data.append('-')
-      data.append('not_downloaded')
+    data.append(metadata.get('urlQueryParameters', {}).get('pid', None))
+    data.append(metadata.get('studyState', None))
+    data.append('-')
+    data.append('not_downloaded')
 
-    except Exception as e:
-      self.log.error(
-        'Failed to result extracted metadata values from study %s with id %s:'
-        ' %s',
-        self.current_study_title, self.current_result_id, e
-      )
     return data
 
-  def _get_pid(self, metadata: list[dict[Any, Any]] | None) -> str:
-    assert metadata is not None
+  def _get_pid(self, metadata: list[dict[Any, Any]]) -> str:
     return metadata[0].get('urlQueryParameters', {}).get('pid', None)
 
   def get_result_data(self, result_id: int) -> io.BytesIO:
-    '''
-    Fetches result data as a zip file.
-    ARGS: id (int): The id of a result.
-    RETURNS: _io.BytesIO.
+    ''' Fetches result data as a zip file.
+
+    Args:
+      id: Result id of a study.
+
+    Returns:
+      io.BytesIO.
     '''
     url = f'{self.base_url}results/data'
     self.log.info('Fetching result data for result id %s', result_id)
@@ -227,16 +223,24 @@ class JatosDownloader:
     return bytes_data
 
   def save_result_data(self, bytes_data: io.BytesIO, savepath: Path):
-    '''
-    Save result data as a .gz file.
-    PRE: bytes_data must encode a ZipFile and only contain one .txt file.
-    ARGS: save_path (Path): The path where the .gz file will be saved.
-    SIDE_EFFECT: Saves file to disk.
+    ''' Save result data as a .gz file.
+
+    Args:
+      bytes_data: ZIP archive containing a single text file.
+      savepath: Destination path for the output .gz file.
+
+    Raises:
+      zipfile.BadZipFile: If bytes_data does not contains a valid ZIP archive.
+      OSError: If the output file cannot be written.
+
+    Side effects:
+      Writes a .gz file to disk.
     '''
     self.log.info(
       'Saving rawdata %s to project %s folder',
       savepath.name, self.current_project_title
     )
+
     try:
       zip_file = zipfile.ZipFile(bytes_data)
       file_name = zip_file.namelist()[0]
@@ -245,15 +249,23 @@ class JatosDownloader:
 
       with gzip.open(savepath, 'wb') as f:
         f.write(data)
-    except Exception as e:
-      self.log.error('Failed to save file %s: %s', savepath.name, e)
+
+    except zipfile.BadZipFile:
+      self.log.exception('Failed to open zipfile')
+      raise
+
+    except Exception:
+      self.log.exception('Failed to save file %s', savepath.name)
+      raise
 
   def load_or_create_result_index(self, path: Path) -> pd.DataFrame:
-    '''
-    Load or create result index csv file.
-    ARGS: path (Path): Path to result index csv.
-    RETURNS: A DataFrame object with the content from the csv or only the
-             headers.
+    ''' Load or create result index csv file.
+
+    Args:
+      path: Path to result index csv.
+
+    Returns:
+      A DataFrame object with the content from the csv or only the headers.
     '''
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_file():
@@ -263,10 +275,12 @@ class JatosDownloader:
       )
       df = pd.read_csv(path)
       return df
+
     self.log.info(
       'Did not find result_index_file.csv for project %s, creating one',
       self.current_project_title
     )
+
     return pd.DataFrame(columns=config.RESULT_INDEX_HEADERS)
 
   def _filter_new_results(self, study_metadata, existing_uuids):
@@ -285,9 +299,9 @@ class JatosDownloader:
     '''Download results and update result index.
 
     Args:
-      study: Metadata about a study.
+      study: Metadata for a study.
 
-    Side_effect: Saves files to disk.
+    Side effects: Saves files to disk.
     '''
     project_title = utils.get_part_of_string(
       study.title,
@@ -337,8 +351,7 @@ class JatosDownloader:
     self.save_result_data(bytes_data, filepath)
 
   def _get_all_project_dirs(self) -> list[Path]:
-    '''
-    Get all folders in root that have soursdata/JATOS folders.
+    '''Get all folders in root that have soursdata/JATOS folders.
     Excludes all project that dose not have any data from JATOS.
     '''
     dirs = []
@@ -348,11 +361,14 @@ class JatosDownloader:
     return dirs
 
   def download_results(self, directory: Path):
-    '''
-    Download all undownloaded results for a project and updates result index
+    '''Download all undownloaded results for a project and updates result index
     file.
-    ARGS: directory (Path): The path to the project.
-    SIDE_EFFECT: Download and writes files to disk.
+
+    Args:
+      directory: The path to the project.
+
+    Side effects:
+      Download and writes files to disk.
     '''
     result_index_path = directory / config.RESULT_INDEX
     df = pd.read_csv(result_index_path)
@@ -373,7 +389,11 @@ class JatosDownloader:
         df.at[index, 'downloaded_at']  = \
           datetime.datetime.now().strftime(config.TIME_FORMAT)
 
-      except Exception as e:
+      except Exception:
+        self.log.exception(
+          'Failed processing result id:%s, participant id: %s',
+          row['result_id'], row['participant_id']
+        )
         df.at[index, 'download_status'] = config.DOWNLOAD_FAILED
     df.to_csv(result_index_path, index=False)
 
@@ -382,12 +402,20 @@ class JatosDownloader:
       # Get project metadata and create result index
       studies = self.get_studies_info()
       for study in studies:
-        self.process_study(study)
+        try:
+          self.process_study(study)
+        except Exception:
+          self.log.exception("Study failed: %s", study)
+          continue
 
       # Get result data and update result index
       project_dirs = self._get_all_project_dirs()
       for project_dir in project_dirs:
-        self.download_results(project_dir)
+        try:
+          self.download_results(project_dir)
+        except Exception:
+          self.log.exception("Download failed")
+          continue
 
     finally:
       self.session.close()
