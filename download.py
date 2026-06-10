@@ -427,7 +427,7 @@ if __name__ == "__main__":
   project_root = os.getenv('project_root')
 
   if not base_url or not api_token or not project_root:
-    print('base_url and api_token must be set in .env file')
+    print('base_url, api_token and project_root must be set in .env file')
     exit()
 
   log = log_util.setupLogging(project_root / config.DOWNLOAD_LOG)
