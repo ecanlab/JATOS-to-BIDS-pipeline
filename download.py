@@ -38,7 +38,7 @@ class JatosDownloader:
     self.session.headers.update(self.headers)
 
     self.current_study_id:      int | None = None
-    self.current_study_uuid:    int | None = None
+    self.current_study_uuid:    str | None = None
     self.current_pid:           str | None = None
     self.current_result_id:     str | None = None
     self.current_study_title:   str | None = None
@@ -158,7 +158,7 @@ class JatosDownloader:
   def get_result_index_values(
       self,
       metadata: dict[str,Any]
-  ) -> list[str | None]:
+  ) -> list[str | int | None]:
     """ Get the result index values from a studies metadata.
 
     Args:
@@ -167,7 +167,7 @@ class JatosDownloader:
     Returns:
       A list with strings or None.
     """
-    data = []
+    data: list[str | int | None]
 
     data.append(self.current_study_title)
 
@@ -352,16 +352,6 @@ class JatosDownloader:
     bytes_data = self.get_result_data(result_id)
     self.save_result_data(bytes_data, filepath)
 
-  def _get_all_project_dirs(self) -> list[Path]:
-    """Get all directories in root that have soursdata/JATOS directories.
-    Excludes all project that dose not have any data from JATOS.
-    """
-    dirs = []
-    for dir in self.project_root.iterdir():
-      if Path(dir / config.JATOS_FOLDER).is_dir():
-        dirs.append(dir)
-    return dirs
-
   def download_results(self, directory: Path):
     """Download all undownloaded results for a project and updates result index
     file.
@@ -410,7 +400,7 @@ class JatosDownloader:
           self.log.exception("Study failed: %s", study)
 
       # Get result data and update result index
-      project_dirs = self._get_all_project_dirs()
+      project_dirs = utils.get_all_project_dirs(self.project_root)
       for project_dir in project_dirs:
         try:
           self.download_results(project_dir)
