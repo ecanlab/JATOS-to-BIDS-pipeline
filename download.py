@@ -159,14 +159,14 @@ class JatosDownloader:
       self,
       metadata: dict[str,Any]
   ) -> list[str | None]:
-    ''' Get the result index values from a studies metadata.
+    """ Get the result index values from a studies metadata.
 
     Args:
       metadata: A dictonary with metadata from a study.
 
     Returns:
       A list with strings or None.
-    '''
+    """
     data = []
 
     data.append(self.current_study_title)
@@ -208,14 +208,14 @@ class JatosDownloader:
     return metadata[0].get('urlQueryParameters', {}).get('pid', None)
 
   def get_result_data(self, result_id: int) -> io.BytesIO:
-    ''' Fetches result data as a zip file.
+    """ Fetches result data as a zip file.
 
     Args:
       id: Result id of a study.
 
     Returns:
       io.BytesIO.
-    '''
+    """
     url = f'{self.base_url}results/data'
     self.log.info('Fetching result data for result id %s', result_id)
     response = self._fetch(url, {'studyResultId': result_id})
@@ -224,7 +224,7 @@ class JatosDownloader:
     return bytes_data
 
   def save_result_data(self, bytes_data: io.BytesIO, savepath: Path):
-    ''' Save result data as a .gz file.
+    """ Save result data as a .gz file.
 
     Args:
       bytes_data: ZIP archive containing a single text file.
@@ -236,7 +236,7 @@ class JatosDownloader:
 
     Side effects:
       Writes a .gz file to disk.
-    '''
+    """
     self.log.info(
       'Saving rawdata %s to project %s folder',
       savepath.name, self.current_project_title
@@ -260,14 +260,14 @@ class JatosDownloader:
       raise
 
   def load_or_create_result_index(self, path: Path) -> pd.DataFrame:
-    ''' Load or create result index csv file.
+    """ Load or create result index csv file.
 
     Args:
       path: Path to result index csv.
 
     Returns:
       A DataFrame object with the content from the csv or only the headers.
-    '''
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_file():
       self.log.info(
@@ -297,13 +297,13 @@ class JatosDownloader:
     return pd.concat([new_df, df], ignore_index=True)
 
   def process_study(self, study: StudyInfo):
-    '''Download results and update result index.
+    """Download results and update result index.
 
     Args:
       study: Metadata for a study.
 
     Side effects: Saves files to disk.
-    '''
+    """
     project_title = utils.get_part_of_string(
       study.title,
       config.REGEX_PROJECT_TITLE
@@ -353,9 +353,9 @@ class JatosDownloader:
     self.save_result_data(bytes_data, filepath)
 
   def _get_all_project_dirs(self) -> list[Path]:
-    '''Get all folders in root that have soursdata/JATOS folders.
+    """Get all folders in root that have soursdata/JATOS folders.
     Excludes all project that dose not have any data from JATOS.
-    '''
+    """
     dirs = []
     for dir in self.project_root.iterdir():
       if Path(dir / config.JATOS_FOLDER).is_dir():
@@ -363,7 +363,7 @@ class JatosDownloader:
     return dirs
 
   def download_results(self, directory: Path):
-    '''Download all undownloaded results for a project and updates result index
+    """Download all undownloaded results for a project and updates result index
     file.
 
     Args:
@@ -371,7 +371,7 @@ class JatosDownloader:
 
     Side effects:
       Download and writes files to disk.
-    '''
+    """
     result_index_path = directory / config.RESULT_INDEX
     df = pd.read_csv(result_index_path)
 
