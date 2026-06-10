@@ -238,7 +238,7 @@ class JatosDownloader:
       Writes a .gz file to disk.
     """
     self.log.info(
-      'Saving rawdata %s to project %s folder',
+      'Saving rawdata %s to project %s directory',
       savepath.name, self.current_project_title
     )
 
@@ -353,7 +353,7 @@ class JatosDownloader:
     self.save_result_data(bytes_data, filepath)
 
   def _get_all_project_dirs(self) -> list[Path]:
-    """Get all folders in root that have soursdata/JATOS folders.
+    """Get all directories in root that have soursdata/JATOS directories.
     Excludes all project that dose not have any data from JATOS.
     """
     dirs = []
