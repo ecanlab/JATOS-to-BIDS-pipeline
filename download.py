@@ -38,6 +38,7 @@ class JatosDownloader:
     self.session.headers.update(self.headers)
 
     self.current_study_id:      int | None = None
+    self.current_study_uuid:    int | None = None
     self.current_pid:           str | None = None
     self.current_result_id:     str | None = None
     self.current_study_title:   str | None = None
@@ -181,8 +182,8 @@ class JatosDownloader:
 
     data.append(metadata.get('uuid', None))
 
-    data.append(metadata.get('study_id', None))
-    data.append(metadata.get('study_uuid', None))
+    data.append(self.current_study_id)
+    data.append(self.current_study_uuid)
 
     date_start = metadata.get('startDate', None)
     if date_start:
@@ -312,6 +313,7 @@ class JatosDownloader:
 
     # Variables for logging
     self.current_study_id = study.id
+    self.current_study_uuid = study.uuid
     self.current_pid = self._get_pid(study_metadata)
     if not self.current_pid:
       self.log.warning(
@@ -375,7 +377,7 @@ class JatosDownloader:
 
     raw_data_dir = self.project_root / directory / config.RAW_DATA
 
-    pending_rows = df[df['download_status'] != config.DOWNLOAD_COMPLETE]
+    pending_rows = df[df['download_status'] != config.DOWNLOADED]
 
     for index, row in pending_rows.iterrows():
       try:
@@ -385,7 +387,7 @@ class JatosDownloader:
           title=row['study_title'],
           target_dir=raw_data_dir
         )
-        df.at[index, 'download_status'] = config.DOWNLOAD_COMPLETE
+        df.at[index, 'download_status'] = config.DOWNLOADED
         df.at[index, 'downloaded_at']  = \
           datetime.datetime.now().strftime(config.TIME_FORMAT)
 
@@ -406,7 +408,6 @@ class JatosDownloader:
           self.process_study(study)
         except Exception:
           self.log.exception("Study failed: %s", study)
-          continue
 
       # Get result data and update result index
       project_dirs = self._get_all_project_dirs()
@@ -415,7 +416,6 @@ class JatosDownloader:
           self.download_results(project_dir)
         except Exception:
           self.log.exception("Download failed")
-          continue
 
     finally:
       self.session.close()
