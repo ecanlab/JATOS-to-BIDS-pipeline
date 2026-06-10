@@ -8,7 +8,7 @@ RESULT_INDEX = Path(RAW_DATA / 'result_index.csv')
 DOWNLOAD_LOG = Path('code/JATOS/logs/download.log')
 
 # Download states
-DOWNLOAD_COMPLETE = 'completed'
+DOWNLOADED = 'downloaded'
 DOWNLOAD_FAILED   = 'failed'
 
 # Lists
