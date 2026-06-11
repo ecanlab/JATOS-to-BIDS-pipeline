@@ -14,7 +14,6 @@ from dotenv import load_dotenv
 from typing import Any, NoReturn
 from dataclasses import dataclass
 
-
 @dataclass
 class StudyInfo:
   id: int
@@ -167,7 +166,7 @@ class JatosDownloader:
     Returns:
       A list with strings or None.
     """
-    data: list[str | int | None]
+    data: list[str | int | None] = []
 
     data.append(self.current_study_title)
 

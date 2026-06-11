@@ -1,6 +1,17 @@
 import re
 import config
 import datetime
+from pathlib import Path
+
+def get_all_project_dirs(project_root) -> list[Path]:
+  """Get all directories in root that have soursdata/JATOS directories.
+  Excludes all project that dose not have any data from JATOS.
+  """
+  dirs = []
+  for dir in project_root.iterdir():
+    if Path(dir / config.JATOS_FOLDER).is_dir():
+      dirs.append(dir)
+  return dirs
 
 def get_part_of_string(text: str, regex: str) -> str:
   '''
@@ -14,7 +25,7 @@ def get_part_of_string(text: str, regex: str) -> str:
     regex (str): Raw string regex pattern to match against the text.
 
   RETURNS:
-    The matching string or an empty string if nothing was found.
+    str: The matching string or an empty string if nothing was found.
   '''
   result = re.search(regex, text)
 
@@ -34,7 +45,7 @@ def convert_to_local_tz(date_ms: float) -> str:
     date_ms (float): A date reprecented as miliseconds.
 
   RETURNS:
-    The time with the format (YYYY-MM-DD HH-mm-ss) converted to the local
+    str: The time with the format (YYYY-MM-DD HH-mm-ss) converted to the local
     timezone.
   '''
   # Convert the date in ms to UTC format
