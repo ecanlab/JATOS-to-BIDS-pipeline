@@ -26,7 +26,8 @@ class JatosDownloader:
       base_url: str,
       api_token: str,
       project_root: str,
-      log: logging.Logger):
+      log: logging.Logger
+  ):
 
     self.base_url = base_url
     self.headers = {'Authorization': f'Bearer {api_token}'}
@@ -42,6 +43,7 @@ class JatosDownloader:
     self.current_result_id:     str | None = None
     self.current_study_title:   str | None = None
     self.current_project_title: str | None = None
+    self.current_task_version : str | None = None
 
   def _fetch(
       self,
@@ -113,14 +115,14 @@ class JatosDownloader:
         for item in data
       ]
 
-    except requests.exceptions.JSONDecodeError:
-      self.log.exception('Invalid JSON response')
+    except requests.exceptions.JSONDecodeError as e:
+      self.log.error('Invalid JSON response: %s', e)
       raise
 
-    except KeyError:
-      self.log.exception(
-        'Missing key in resposene. Make sure that JATOS save all metadata for'
-        'each study correctly.'
+    except KeyError as e:
+      self.log.error(
+        'Missing key in resposene: %s. Make sure that JATOS save all metadata'
+        'for each study correctly.'
       )
       raise
 
@@ -146,12 +148,12 @@ class JatosDownloader:
 
       return study_result
 
-    except requests.exceptions.JSONDecodeError:
-      self.log.exception('Invalid JSON response')
+    except requests.exceptions.JSONDecodeError as e:
+      self.log.error('Invalid JSON response: %s', e)
       raise
 
-    except KeyError:
-      self.log.exception('Failed to fetch metadata for study id %s', study_id)
+    except KeyError as e:
+      self.log.error('Failed to fetch metadata for study id %s: %s', study_id, e)
       raise
 
   def get_result_index_values(
@@ -187,12 +189,12 @@ class JatosDownloader:
     date_start = metadata.get('startDate', None)
     if date_start:
       date_start_local_tz = utils.convert_to_local_tz(date_start)
-    data.append(date_start_local_tz)
+      data.append(date_start_local_tz)
 
     date_last_seen = metadata.get('lastSeenDate', None)
     if date_last_seen:
       date_last_seen_local_tz = utils.convert_to_local_tz(date_last_seen)
-    data.append(date_last_seen_local_tz)
+      data.append(date_last_seen_local_tz)
 
     data.append(metadata.get('duration', None))
 
@@ -250,12 +252,12 @@ class JatosDownloader:
       with gzip.open(savepath, 'wb') as f:
         f.write(data)
 
-    except zipfile.BadZipFile:
-      self.log.exception('Failed to open zipfile')
+    except zipfile.BadZipFile as e:
+      self.log.error('Failed to open zipfile: %s', e)
       raise
 
-    except Exception:
-      self.log.exception('Failed to save file %s', savepath.name)
+    except Exception as e:
+      self.log.error('Failed to save file %s: %s', savepath.name, e)
       raise
 
   def load_or_create_result_index(self, path: Path) -> pd.DataFrame:
@@ -317,7 +319,7 @@ class JatosDownloader:
     if not self.current_pid:
       self.log.warning(
         'Could not get pid from study %s resultd id %s, all studies needs to'
-        ' pid in urlQueryParameters or in data as either pid or id',
+        'store pid in urlQueryParameters or in data as either pid or id',
         study.title, self.current_result_id
       )
     self.current_study_title = study.title
@@ -380,13 +382,13 @@ class JatosDownloader:
         df.at[index, 'downloaded_at']  = \
           datetime.datetime.now().strftime(config.TIME_FORMAT)
 
-      except Exception:
-        self.log.exception(
-          'Failed processing result id:%s, participant id: %s',
-          row['result_id'], row['participant_id']
+      except Exception as e:
+        self.log.error(
+          'Failed processing result id:%s, participant id: %s. %s',
+          row['result_id'], row['participant_id'], e
         )
         df.at[index, 'download_status'] = config.DOWNLOAD_FAILED
-    df.to_csv(result_index_path, index=False)
+        df.to_csv(result_index_path, index=False)
 
   def run(self):
     try:
@@ -395,16 +397,16 @@ class JatosDownloader:
       for study in studies:
         try:
           self.process_study(study)
-        except Exception:
-          self.log.exception("Study failed: %s", study)
+        except Exception as e:
+          self.log.error('Study failed: %s, %s', study, e)
 
       # Get result data and update result index
       project_dirs = utils.get_all_project_dirs(self.project_root)
       for project_dir in project_dirs:
         try:
           self.download_results(project_dir)
-        except Exception:
-          self.log.exception("Download failed")
+        except Exception as e:
+          self.log.error('Download failed: %s', e)
 
     finally:
       self.session.close()
