@@ -23,9 +23,9 @@ RESULT_INDEX_HEADERS = [
 
 # Regex
 REGEX_PROJECT_TITLE  = r'^[^_]+'
-REGEX_PROJECT_ARM    = r'_arm-[\d]+'
-REGEX_PROJECT_SES    = r'_ses-[\d]+'
-REGEX_PROJECT_TASK   = r'_task-[\w-]+'
+REGEX_PROJECT_ARM    = r'_arm-[^_]+'
+REGEX_PROJECT_SES    = r'_ses-[^_]+'
+REGEX_PROJECT_TASK   = r'_task-[^_]+'
 REGEX_TASK_NAME      = r'^(?:(?!\bv\.\d+(?:\.\d+)*\b).)*'
 REGEX_TASK_VERSION   = r'v\.\d+(?:\.\d+)*'
 
