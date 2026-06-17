@@ -246,11 +246,27 @@ class JatosDownloader:
     try:
       zip_file = zipfile.ZipFile(bytes_data)
       file_name = zip_file.namelist()[0]
+
       with zip_file.open(file_name) as content:
         data = content.read()
 
-      with gzip.open(savepath, 'wb') as f:
+      with gzip.open(savepath, 'x', newline=None) as f:
         f.write(data)
+
+    except FileExistsError:
+      self.log.warning('File %s exists, trying alternate names...', savepath.name)
+      sufix: str = 1
+      while True:
+        try:
+          with gzip.open(savepath.parent / f'{savepath.stem}_{sufix}{savepath.suffix}', 'x', newline=None) as f:
+            f.write(data)
+            break
+
+        except FileExistsError:
+          sufix += 1
+
+      self.log.info('Saved as %s instead', f'{savepath.stem}_{sufix}{savepath.suffix}')
+
 
     except zipfile.BadZipFile as e:
       self.log.error('Failed to open zipfile: %s', e)
@@ -332,7 +348,10 @@ class JatosDownloader:
 
     if new_rows:
       df = self._append_new_result(df, new_rows)
-      df.to_csv(result_index_path, index=False)
+
+    sufix: int = 1
+
+    df.to_csv(result_index_path, index=False)
 
   def _construct_result_filename(self, title: str, pid: str) -> str:
     arm  = utils.get_part_of_string(title, config.REGEX_PROJECT_ARM)
