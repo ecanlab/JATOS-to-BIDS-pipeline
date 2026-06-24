@@ -245,28 +245,40 @@ class JatosDownloader:
 
     try:
       zip_file = zipfile.ZipFile(bytes_data)
-      file_name = zip_file.namelist()[0]
+      filename = zip_file.namelist()[0]
 
-      with zip_file.open(file_name) as content:
+      with zip_file.open(filename) as content:
         data = content.read()
 
       with gzip.open(savepath, 'x', newline=None) as f:
         f.write(data)
 
     except FileExistsError:
-      self.log.warning('File %s exists, trying alternate names...', savepath.name)
+      self.log.warning(
+        'File %s exists, trying alternate names...',
+        savepath.name
+      )
       sufix: str = 1
       while True:
         try:
-          with gzip.open(savepath.parent / f'{savepath.stem}_{sufix}{savepath.suffix}', 'x', newline=None) as f:
+          filename_with_sufix = savepath.stem
+          filename = Path(filename_with_sufix).stem
+          new_savepath = savepath.with_stem(filename + f'_{sufix}' + '.tar')
+
+          with gzip.open(new_savepath, 'x', newline=None) as f:
             f.write(data)
-            break
+
+          self.log.info('Saved as %s instead', new_savepath.name)
+          break
 
         except FileExistsError:
           sufix += 1
 
-      self.log.info('Saved as %s instead', f'{savepath.stem}_{sufix}{savepath.suffix}')
-
+        except Exception as e:
+          self.log.info(
+            'Unexpected error while saving file: %s. %s',
+            new_savepath.name, e
+          )
 
     except zipfile.BadZipFile as e:
       self.log.error('Failed to open zipfile: %s', e)
