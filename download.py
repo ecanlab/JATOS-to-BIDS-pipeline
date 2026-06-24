@@ -409,9 +409,11 @@ class JatosDownloader:
           title=row['study_title'],
           target_dir=raw_data_dir
         )
-        df.at[index, 'download_status'] = config.DOWNLOADED
-        df.at[index, 'downloaded_at']  = \
+        print(df.at[index, 'download_status'])
+        df.loc[index, 'download_status'] = config.DOWNLOADED
+        df.loc[index, 'downloaded_at']  = \
           datetime.datetime.now().strftime(config.TIME_FORMAT)
+        print(df.at[index, 'download_status'])
 
       except Exception as e:
         self.log.error(
@@ -419,7 +421,8 @@ class JatosDownloader:
           row['result_id'], row['participant_id'], e
         )
         df.at[index, 'download_status'] = config.DOWNLOAD_FAILED
-        df.to_csv(result_index_path, index=False)
+
+      df.to_csv(result_index_path, index=False)
 
   def run(self):
     try:
