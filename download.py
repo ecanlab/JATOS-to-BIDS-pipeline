@@ -409,11 +409,11 @@ class JatosDownloader:
           title=row['study_title'],
           target_dir=raw_data_dir
         )
-        print(df.at[index, 'download_status'])
+
         df.loc[index, 'download_status'] = config.DOWNLOADED
         df.loc[index, 'downloaded_at']  = \
           datetime.datetime.now().strftime(config.TIME_FORMAT)
-        print(df.at[index, 'download_status'])
+
 
       except Exception as e:
         self.log.error(
