@@ -263,7 +263,7 @@ class JatosDownloader:
         try:
           filename_with_sufix = savepath.stem
           filename = Path(filename_with_sufix).stem
-          new_savepath = savepath.with_stem(filename + f'_{sufix}' + '.tar')
+          new_savepath = savepath.with_stem(filename + f'_{sufix}' + '.txt')
 
           with gzip.open(new_savepath, 'x', newline=None) as f:
             f.write(data)
@@ -272,7 +272,7 @@ class JatosDownloader:
           break
 
         except FileExistsError:
-          sufix += 1n
+          sufix += 1
 
         except Exception as e:
           self.log.error(
