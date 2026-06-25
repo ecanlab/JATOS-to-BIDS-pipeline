@@ -272,7 +272,7 @@ class JatosDownloader:
           break
 
         except FileExistsError:
-          sufix += 1
+          sufix += 1n
 
         except Exception as e:
           self.log.error(
@@ -442,6 +442,7 @@ class JatosDownloader:
           self.log.error('Download failed: %s', e)
 
     finally:
+      self.log.info('Download completed')
       self.session.close()
 
 if __name__ == "__main__":

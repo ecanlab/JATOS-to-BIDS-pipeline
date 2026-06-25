@@ -65,6 +65,7 @@ class Normalizer():
 
   def validate_schema_map(self, schema_map_data: dict) -> SchemaMap:
     try:
+      self.log.info('Validating schema map')
       return SchemaMap.model_validate(schema_map_data)
 
     except ValidationError as e:
@@ -102,6 +103,7 @@ class Normalizer():
       Participant raw data as dict.
     """
     try:
+      self.log.info('Loading participant raw data data from %s', path.name)
       with gzip.open(path, 'r') as content:
         data = content.read()
         json_content = json.loads(data)
@@ -150,6 +152,7 @@ class Normalizer():
 
   def get_mapping(self, task_info: TaskInfo) -> dict:
     try:
+      self.log.info('Found the mapping for %s', task_info.title)
       task = self.schema_map.task[task_info.name]
       version = task.version[task_info.version]
       return version.mapping
@@ -177,11 +180,17 @@ class Normalizer():
 
     # Opensesame structure
     if isinstance(data, dict):
+      self.log.info(
+        'Found Openseamse structure in the raw data, collectiong variables'
+      )
       for trial in data['data']:
         df.loc[len(df)] = [trial.get(k, None) for k in mapping.values()]
 
     # jsPsych structure
     if isinstance(data, list):
+      self.log.info(
+        'Found jsPsych structure in the raw data, collectiong variables'
+      )
       for trial in data:
         df.loc[len(df)] = [trial.get(k, None) for k in mapping.values()]
 
@@ -207,7 +216,10 @@ class Normalizer():
         filename = file.name.replace('.txt.gz', '.csv')
         filepath = project_dir / config.NORMALIZED_DATA/ filename
         filepath.parent.mkdir(parents=True, exist_ok=True)
+        self.log.info('Saving normalized data to %s', filepath.name)
         df.to_csv(filepath, index=False)
+
+    self.log.info('Normalization completed')
 
 if __name__ == "__main__":
   load_dotenv()
