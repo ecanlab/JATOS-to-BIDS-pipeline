@@ -254,7 +254,7 @@ class JatosDownloader:
         f.write(data)
 
     except FileExistsError:
-      self.log.warning(
+      self.log.info(
         'File %s exists, trying alternate names...',
         savepath.name
       )
@@ -275,7 +275,7 @@ class JatosDownloader:
           sufix += 1
 
         except Exception as e:
-          self.log.info(
+          self.log.error(
             'Unexpected error while saving file: %s. %s',
             new_savepath.name, e
           )
@@ -413,7 +413,6 @@ class JatosDownloader:
         df.loc[index, 'download_status'] = config.DOWNLOADED
         df.loc[index, 'downloaded_at']  = \
           datetime.datetime.now().strftime(config.TIME_FORMAT)
-
 
       except Exception as e:
         self.log.error(
