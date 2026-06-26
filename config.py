@@ -23,7 +23,7 @@ RESULT_INDEX_HEADERS = [
   'start_date', 'end_date', 'duration', 'participant_id', 'study_state',
   'downloaded_at', 'download_status',
 ]
-PROJECT_IDS_HEADERS = ['user_id', 'result_uuid', 'rule', 'parameter']
+PARTICIPANT_RULES_HEADERS = ['user_id', 'result_uuid', 'rule', 'parameter']
 
 # Regex
 REGEX_PROJECT_TITLE  = r'^[^_]+'
