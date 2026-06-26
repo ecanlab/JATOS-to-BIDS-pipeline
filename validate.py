@@ -44,13 +44,6 @@ class Validator():
       self.log.critical('Ivalid JSON in project IDs file: %s', e)
       sys.exit(1)
 
-  def create_df_with_headers(self) -> pd.DataFrame:
-    try:
-      return pd.DataFrame(columns=config.PROJECT_IDS_HEADERS)
-    except Exception as e:
-      self.log.error('Could not create DataFrame: %s', e)
-      raise
-
   def run(self):
     project_ids = self.load_project_ids()
     project_dirs = utils.get_all_project_dirs(self.project_root)
@@ -59,7 +52,7 @@ class Validator():
       path = project_dir / config.NORMALIZED_DATA
 
       for file in path.glob('*.csv'):
-        df = self.create_df_with_headers()
+        df = utils.create_df_with_headers(config.PROJECT_IDS_HEADERS)
         filepath = project_dir / config.NORMALIZED_DATA/ file.name
         filepath.parent.mkdir(parents=True, exist_ok=True)
 
