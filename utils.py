@@ -31,6 +31,9 @@ def get_all_project_dirs(project_root: Path) -> list[Path]:
 
   Args:
     project_root: The project root directory.
+
+  Returns:
+    A list with all project directories.
   """
   dirs = []
   for dir in project_root.iterdir():
