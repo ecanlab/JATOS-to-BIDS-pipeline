@@ -163,14 +163,6 @@ class Normalizer():
       , task_info.title, e)
       raise
 
-  def create_df_with_headers(self, mapping: dict) -> pd.DataFrame:
-    try:
-      columns = list(mapping.keys())
-      return pd.DataFrame(columns=columns)
-    except Exception as e:
-      self.log.error('Could not create DataFrame from mapping: %s', e)
-      raise
-
   def populate_df(
       self,
       df: pd.DataFrame,
@@ -211,7 +203,7 @@ class Normalizer():
         if not mapping:
           continue
 
-        df = self.create_df_with_headers(mapping)
+        df = utils.create_df_with_headers(mapping)
         df = self.populate_df(df, mapping, data)
         filename = file.name.replace('.txt.gz', '.csv')
         filepath = project_dir / config.NORMALIZED_DATA/ filename
