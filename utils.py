@@ -1,11 +1,36 @@
 import re
 import config
 import datetime
+import pandas as pd
 from pathlib import Path
 
-def get_all_project_dirs(project_root) -> list[Path]:
+def create_df_with_headers(self, headers: dict | list) -> pd.DataFrame:
+  """Creates a dataframe and populate the columns with titles.
+
+  Args:
+    headers: Either a dict where the keys are the headers or a list with
+    headers.
+
+  Returns:
+    A pandas dataframe with column titles.
+  """
+  try:
+    if isinstance(headers, dict):
+      columns = list(headers.keys())
+    if isinstance(headers, list):
+      columns = headers
+    return pd.DataFrame(columns=columns)
+  except Exception as e:
+    self.log.error('Could not create DataFrame: %s', e)
+    raise
+
+def get_all_project_dirs(project_root: Path) -> list[Path]:
   """Get all directories in root that have soursdata/JATOS directories.
+
   Excludes all project that dose not have any data from JATOS.
+
+  Args:
+    project_root: The project root directory.
   """
   dirs = []
   for dir in project_root.iterdir():
