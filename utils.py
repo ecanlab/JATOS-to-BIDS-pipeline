@@ -4,7 +4,7 @@ import datetime
 import pandas as pd
 from pathlib import Path
 
-def create_df_with_headers(self, headers: dict | list) -> pd.DataFrame:
+def create_df_with_headers(headers: dict | list) -> pd.DataFrame:
   """Creates a dataframe and populate the columns with titles.
 
   Args:
