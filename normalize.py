@@ -161,7 +161,6 @@ class Normalizer():
       self.log.error('Could not find the mapping for %s, make sure to fill out'
       'the schema_map.json. %s'
       , task_info.title, e)
-      raise
 
   def populate_df(
       self,
