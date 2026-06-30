@@ -127,7 +127,7 @@ class JatosDownloader:
       raise
 
   def get_study_metadata(self, study_id: int) -> list[dict]:
-    '''Fetches study result metadata for a study.
+    """Fetches study result metadata for a study.
 
     Args:
       study_id: The id of the study.
@@ -138,7 +138,7 @@ class JatosDownloader:
     Raises:
       requests.exceptions.JSONDecodeError: If the response could not be decoded
       into JSON
-    '''
+    """
     url = f'{self.base_url}results/metadata'
     self.log.info('Fetching study metadata for study id %s', study_id)
     response = self._fetch(url, {'studyId': study_id})
@@ -160,7 +160,7 @@ class JatosDownloader:
       self,
       metadata: dict[str,Any]
   ) -> list[str | int | None]:
-    """ Get the result index values from a studies metadata.
+    """Get the result index values from a studies metadata.
 
     Args:
       metadata: A dictonary with metadata from a study.
@@ -365,11 +365,11 @@ class JatosDownloader:
 
     df.to_csv(result_index_path, index=False)
 
-  def _construct_result_filename(self, title: str, pid: str) -> str:
+  def _construct_result_filename(self, title: str, pid: str, rid: int) -> str:
     arm  = utils.get_part_of_string(title, config.REGEX_PROJECT_ARM)
     ses  = utils.get_part_of_string(title, config.REGEX_PROJECT_SES)
     task = utils.get_part_of_string(title, config.REGEX_PROJECT_TASK)
-    return f'pid-{pid}{arm}{ses}{task}.txt.gz'
+    return f'pid-{pid}_rid-{rid}{arm}{ses}{task}.txt.gz'
 
   def _process_and_save_result(
       self,
@@ -378,7 +378,7 @@ class JatosDownloader:
       title: str,
       target_dir: Path
   ):
-    filename = self._construct_result_filename(title, pid)
+    filename = self._construct_result_filename(title, pid, result_id)
     filepath = target_dir / filename
 
     bytes_data = self.get_result_data(result_id)
