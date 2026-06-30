@@ -6,7 +6,7 @@ JATOS_FOLDER = Path('sourcedata/JATOS')
 RAW_DATA     = Path('sourcedata/JATOS/raw_data/')
 RESULT_INDEX = Path(RAW_DATA / 'result_index.csv')
 NORMALIZED_DATA = Path('sourcedata/JATOS/normalized_data')
-SCHEMA_MAP = Path('code/JATOS/schema_map.json')
+PROJECT_CONFIG = Path('code/JATOS/project_config.json')
 VALIDATED_DATA = Path('sourcedata/JATOS/validated_data')
 PROJECT_IDS = Path('code/JATOS/project_ids.json')
 DOWNLOAD_LOG = Path('code/JATOS/logs/download.log')
@@ -23,7 +23,6 @@ RESULT_INDEX_HEADERS = [
   'start_date', 'end_date', 'duration', 'participant_id', 'study_state',
   'downloaded_at', 'download_status',
 ]
-PARTICIPANT_RULES_HEADERS = ['user_id', 'result_uuid', 'rule', 'parameter']
 
 # Regex
 REGEX_PROJECT_TITLE  = r'^[^_]+'

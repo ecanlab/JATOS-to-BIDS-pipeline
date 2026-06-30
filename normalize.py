@@ -19,8 +19,15 @@ class Version(BaseModel):
 class Task(BaseModel):
   version: dict[str, Version]
 
-class SchemaMap(BaseModel):
+class Title(BaseModel):
+  ids: list[int]
+
+class Project(BaseModel):
+  title: dict[str, Title]
+
+class ProjectConfig(BaseModel):
   task: dict[str, Task]
+  project: Project
 
 @dataclass
 class TaskInfo:
@@ -32,41 +39,41 @@ class Normalizer():
   def __init__ (self, project_root: str, log: logging.Logger):
     self.project_root = Path(project_root)
     self.log = log
-    self.schema_map: SchemaMap
+    self.project_config: ProjectConfig
 
-  def load_schema_map(self) -> dict[str, Any]:
-    """Load schema map json file.
+  def load_project_config(self) -> dict[str, Any]:
+    """Load project config json file.
 
     Args:
-      path: Path to schema map json file.
+      path: Path to project config json file.
 
     Returns:
       A dictonary with the content from the json file.
     """
-    path = self.project_root / config.SCHEMA_MAP
+    path = self.project_root / config.PROJECT_CONFIG
     path.parent.mkdir(parents=True, exist_ok=True)
 
     if not path.is_file():
       self.log.critical(
-        'Did not find schema_map.json in %s. Create the file and fill out the '
-        'structure according to the documentation.',
+        'Did not find project_config.json in %s. Create the file and fill out'
+        ' the structure according to the documentation.',
         path
       )
       sys.exit(1)
 
-    self.log.info('Found schema_map.json')
+    self.log.info('Found project_config.json')
 
     try:
       with open(path, 'r') as f:
         return json.load(f)
     except json.JSONDecodeError as e:
-      self.log.critical('Ivalid JSON in schema map: %s', e)
+      self.log.critical('Ivalid JSON in project config: %s', e)
       sys.exit(1)
 
-  def validate_schema_map(self, schema_map_data: dict) -> SchemaMap:
+  def validate_project_config(self, project_config: dict) -> ProjectConfig:
     try:
-      self.log.info('Validating schema map')
-      return SchemaMap.model_validate(schema_map_data)
+      self.log.info('Validating project config')
+      return ProjectConfig.model_validate(project_config)
 
     except ValidationError as e:
       self.log.critical('Could not validate json structure: %s', e)
@@ -153,13 +160,13 @@ class Normalizer():
   def get_mapping(self, task_info: TaskInfo) -> dict:
     try:
       self.log.info('Found the mapping for %s', task_info.title)
-      task = self.schema_map.task[task_info.name]
+      task = self.project_config.task[task_info.name]
       version = task.version[task_info.version]
       return version.mapping
 
     except KeyError as e:
       self.log.error('Could not find the mapping for %s, make sure to fill out'
-      'the schema_map.json. %s'
+      'the project_config.json. %s'
       , task_info.title, e)
 
   def populate_df(
@@ -188,8 +195,9 @@ class Normalizer():
     return df
 
   def run(self):
-    schema_map_data = self.load_schema_map()
-    self.schema_map = self.validate_schema_map(schema_map_data)
+    project_config = self.load_project_config()
+    self.project_config = self.validate_project_config(project_config)
+
     project_dirs = utils.get_all_project_dirs(self.project_root)
 
     for project_dir in project_dirs:
