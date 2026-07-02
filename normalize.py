@@ -19,15 +19,15 @@ class Version(BaseModel):
 class Task(BaseModel):
   version: dict[str, Version]
 
-class Title(BaseModel):
+class Ids(BaseModel):
   ids: list[int]
 
 class Project(BaseModel):
-  title: dict[str, Title]
+  title: dict[Ids, str]
 
 class ProjectConfig(BaseModel):
   task: dict[str, Task]
-  project: Project
+  project: dict[str, Ids]
 
 @dataclass
 class TaskInfo:
@@ -39,7 +39,10 @@ class Normalizer():
   def __init__ (self, project_root: str, log: logging.Logger):
     self.project_root = Path(project_root)
     self.log = log
+    self.result_index: pd.DataFrame
     self.project_config: ProjectConfig
+
+    self.current_project_title: Path = None
 
   def load_project_config(self) -> dict[str, Any]:
     """Load project config json file.
@@ -78,6 +81,139 @@ class Normalizer():
     except ValidationError as e:
       self.log.critical('Could not validate json structure: %s', e)
       sys.exit(1)
+
+  def _check_validated_data_dir(self, validated_data_dir: Path):
+    """Check if the validated data directory is empty and inform the user."""
+
+    if any(validated_data_dir.iterdir()):
+      self.log.warning(
+        '%s is not empty. Clear the directory for a clean run',
+        validated_data_dir
+      )
+
+  def load_result_index(self, path: Path) -> pd.DataFrame:
+    """ Load result index csv file.
+
+    Args:
+      path: Path to result index csv.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.is_file():
+      self.log.info(
+        'Did not find result_index_file.csv for project %s, run the download'
+        ' script first',
+        self.current_project_title
+      )
+      sys.exit(1)
+
+    self.log.info(
+      'Found result_index_file.csv for project %s',
+      self.current_project_title
+    )
+    self.result_index = pd.read_csv(path)
+
+  def find_id_not_in_project(self) -> bool:
+    """Updateda the result index with a new coulumn.
+
+    If a participant ID is not part of the project mark that row as True in the
+    new column. The project IDs are specified in project_config.json.
+
+    Returns:
+      A boolean value, True if there are IDs that are not part the of the
+      project, othervise False.
+    """
+    self.log.info('Checking if all participant IDs are part of the project')
+
+    project_ids = self.project_config.project[self.current_project_title].ids
+    self.result_index["not_in_project_id"] = \
+      ~self.result_index["participant_id"].isin(project_ids)
+
+    if self.result_index["not_in_project_id"].any():
+      self.log.warning(
+        'Found participant ID that is not part of the project, check'
+        ' id_corrections.csv'
+      )
+      return True
+    return False
+
+  def find_pid_duplicates(self) -> bool:
+    """Find all participants IDs that are on multiple rows with the same study
+       title.
+
+    Returns:
+      A boolean value, True if there are IDs that are not part the of the
+      project, othervise False.
+    """
+    self.log.info('Checking for duplicate participant IDs')
+
+    duplicates = self.result_index.duplicated(
+      keep=False,
+      subset=['study_title','participant_id']
+    )
+
+    self.result_index["duplicate_id"] = duplicates
+
+    if duplicates.any():
+      self.log.warning(
+        'Found duplicate participant ID, check id_corrections.csv'
+      )
+      return True
+    return False
+
+  def _filter_result_index(self):
+    cond = self.result_index[["not_in_project_id", "duplicate_id"]].any(axis=1)
+    self.result_index = self.result_index[cond]
+
+  def validate_pids(self, project_dir: Path):
+    """Validate participant IDs by checking for duplicates and comparing all IDs
+    to the project participant IDs.
+
+    Args:
+      project_dir: The project folder.
+    """
+    found_id_not_in_project = self.find_id_not_in_project()
+    found_pid_duplicates = self.find_pid_duplicates()
+    self._filter_result_index()
+
+    path = project_dir / config.VALIDATED_DATA / 'id_corrections.csv'
+
+    if path.is_file():
+      self.log.info('Found id_corrections.csv')
+      id_corrections = pd.read_csv(path)
+
+      # Make a copy of the column 'rule' and then remove it so it is possible to
+      # compare if the two DataFrames are equal.
+      id_corrections_rule = id_corrections.get(['rule'])
+      id_corrections.drop(['rule'],axis=1, inplace=True)
+
+      if not self.result_index.equals(id_corrections):
+        self.log.info('Updating id_corrections.csv')
+        combined_pd = pd.concat([id_corrections, self.result_index])
+        combined_pd.drop_duplicates(inplace=True)
+        combined_pd['rule'] = id_corrections_rule
+
+        combined_pd.to_csv(path, index=False)
+
+      else:
+        self.log.info('id_corrections.csv is Up-To-Date')
+
+    elif found_id_not_in_project or found_pid_duplicates:
+      self.result_index['rule'] = None
+      self.result_index.to_csv(path, index=False)
+
+      self.log.info(
+        'Created %s, in %s validated data, please fill in an action for each'
+        ' row. Read the documentation for information about the different'
+        ' actions',
+        path.name,
+        self.current_project_title
+      )
+
+    else:
+      self.log.info(
+        'No duplicate IDs or IDs not in project found in %s',
+        self.current_project_title
+      )
 
   def repair_json_data(self, incomplete_json: bytes) -> str:
     """Fix corrupt JSON data by adding missing brackets and data wrapper.
@@ -179,7 +315,7 @@ class Normalizer():
     # Opensesame structure
     if isinstance(data, dict):
       self.log.info(
-        'Found Openseamse structure in the raw data, collectiong variables'
+        'Found Openseamse structure in the raw data, collecting variables'
       )
       for trial in data['data']:
         df.loc[len(df)] = [trial.get(k, None) for k in mapping.values()]
@@ -187,7 +323,7 @@ class Normalizer():
     # jsPsych structure
     if isinstance(data, list):
       self.log.info(
-        'Found jsPsych structure in the raw data, collectiong variables'
+        'Found jsPsych structure in the raw data, collecting variables'
       )
       for trial in data:
         df.loc[len(df)] = [trial.get(k, None) for k in mapping.values()]
@@ -201,9 +337,18 @@ class Normalizer():
     project_dirs = utils.get_all_project_dirs(self.project_root)
 
     for project_dir in project_dirs:
-      path = project_dir / config.RAW_DATA
+      self.current_project_title = project_dir.name
+      path = project_dir / config.VALIDATED_DATA
+      path.mkdir(True, exist_ok=True)
 
-      for file in path.glob('*.gz'):
+      self.load_result_index(project_dir / config.RESULT_INDEX)
+      self.validate_pids(project_dir)
+
+      self._check_validated_data_dir(path)
+
+      path_raw_data = project_dir / config.RAW_DATA
+
+      for file in path_raw_data.glob('*.gz'):
         data = self.load_participant_raw_data(file)
         task_info = self.get_task_info(data)
         mapping = self.get_mapping(task_info)
@@ -213,12 +358,11 @@ class Normalizer():
         df = utils.create_df_with_headers(mapping)
         df = self.populate_df(df, mapping, data)
         filename = file.name.replace('.txt.gz', '.csv')
-        filepath = project_dir / config.NORMALIZED_DATA/ filename
-        filepath.parent.mkdir(parents=True, exist_ok=True)
-        self.log.info('Saving normalized data to %s', filepath.name)
+        filepath = path / filename
+        self.log.info('Saving validated data to %s', filepath.name)
         df.to_csv(filepath, index=False)
 
-    self.log.info('Normalization completed')
+    self.log.info('Validation completed')
 
 if __name__ == "__main__":
   load_dotenv()
@@ -228,7 +372,7 @@ if __name__ == "__main__":
     print('project_root must be set in .env file')
     exit()
 
-  log = log_util.setupLogging(project_root / config.NORMALIZE_LOG)
+  log = log_util.setupLogging(project_root / config.VALIDATE_LOG)
   log.info('Configuration loaded successfully')
 
   normalizer = Normalizer(project_root, log)
