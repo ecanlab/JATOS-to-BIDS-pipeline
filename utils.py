@@ -41,7 +41,7 @@ def get_all_project_dirs(project_root: Path) -> list[Path]:
       dirs.append(dir)
   return dirs
 
-def get_part_of_string(text: str, regex: str) -> str:
+def regex(text: str, regex: str) -> str:
   '''
   Get the matching regex from a string.
 

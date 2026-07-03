@@ -333,10 +333,7 @@ class JatosDownloader:
 
     Side effects: Saves files to disk.
     """
-    project_title = utils.get_part_of_string(
-      study.title,
-      config.REGEX_PROJECT_TITLE
-    )
+    project_title = utils.regex(study.title, config.REGEX_PROJECT_TITLE)
     result_index_path = self.project_root / project_title / config.RESULT_INDEX
     study_metadata = self.get_study_metadata(study.id)
 
@@ -366,9 +363,9 @@ class JatosDownloader:
     df.to_csv(result_index_path, index=False)
 
   def _construct_result_filename(self, title: str, pid: str, rid: int) -> str:
-    arm  = utils.get_part_of_string(title, config.REGEX_PROJECT_ARM)
-    ses  = utils.get_part_of_string(title, config.REGEX_PROJECT_SES)
-    task = utils.get_part_of_string(title, config.REGEX_PROJECT_TASK)
+    arm  = utils.regex(title, config.REGEX_PROJECT_ARM)
+    ses  = utils.regex(title, config.REGEX_PROJECT_SES)
+    task = utils.regex(title, config.REGEX_PROJECT_TASK)
     return f'pid-{pid}_rid-{rid}{arm}{ses}{task}.txt.gz'
 
   def _process_and_save_result(
