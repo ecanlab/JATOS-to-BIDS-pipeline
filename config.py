@@ -5,12 +5,10 @@ from pathlib import Path
 JATOS_FOLDER = Path('sourcedata/JATOS')
 RAW_DATA     = Path('sourcedata/JATOS/raw_data/')
 RESULT_INDEX = Path(RAW_DATA / 'result_index.csv')
-NORMALIZED_DATA = Path('sourcedata/JATOS/normalized_data')
 PROJECT_CONFIG = Path('code/JATOS/project_config.json')
 VALIDATED_DATA = Path('sourcedata/JATOS/validated_data')
 PROJECT_IDS = Path('code/JATOS/project_ids.json')
 DOWNLOAD_LOG = Path('code/JATOS/logs/download.log')
-NORMALIZE_LOG = Path('code/JATOS/logs/normalize.log')
 VALIDATE_LOG = Path('code/JATOS/logs/validate.log')
 
 # Download states
@@ -37,3 +35,6 @@ TIME_FORMAT = '%Y-%m-%d %H:%M:%S'
 
 # Get the local timezone
 LOCAL_TZ = datetime.datetime.now().astimezone().tzinfo
+
+# ID correction rules
+rules = set(['keep', 'reassign_id', 'exclude'])
