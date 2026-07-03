@@ -41,7 +41,7 @@ def get_all_project_dirs(project_root: Path) -> list[Path]:
       dirs.append(dir)
   return dirs
 
-def regex(text: str, regex: str) -> str:
+def regex(text: str, regex: str, group: int =0) -> str:
   '''
   Get the matching regex from a string.
 
@@ -49,8 +49,9 @@ def regex(text: str, regex: str) -> str:
     regex should be a raw string, r''
 
   ARGS:
-    text (str): The string that will be searched.
-    regex (str): Raw string regex pattern to match against the text.
+    text: The string that will be searched.
+    regex: Raw string regex pattern to match against the text.
+    group: Specify a subgroups of the match.
 
   RETURNS:
     str: The matching string or an empty string if nothing was found.
@@ -58,7 +59,7 @@ def regex(text: str, regex: str) -> str:
   result = re.search(regex, text)
 
   if result:
-    return result.group(0)
+    return result.group(group)
   else:
     return ''
 
