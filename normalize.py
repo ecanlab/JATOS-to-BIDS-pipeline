@@ -40,6 +40,7 @@ class Normalizer():
     self.project_root = Path(project_root)
     self.log = log
     self.result_index: pd.DataFrame
+    self.id_corrections: pd.DataFrame
     self.project_config: ProjectConfig
 
     self.current_project_title: Path = None
@@ -91,8 +92,8 @@ class Normalizer():
         validated_data_dir
       )
 
-  def load_result_index(self, path: Path) -> pd.DataFrame:
-    """ Load result index csv file.
+  def load_result_index(self, path: Path):
+    """Load result index csv file.
 
     Args:
       path: Path to result index csv.
@@ -100,14 +101,14 @@ class Normalizer():
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.is_file():
       self.log.info(
-        'Did not find result_index_file.csv for project %s, run the download'
+        'Did not find result_index.csv for project %s, run the download'
         ' script first',
         self.current_project_title
       )
       sys.exit(1)
 
     self.log.info(
-      'Found result_index_file.csv for project %s',
+      'Found result_index.csv for project %s',
       self.current_project_title
     )
     self.result_index = pd.read_csv(path)
@@ -175,7 +176,7 @@ class Normalizer():
     found_pid_duplicates = self.find_pid_duplicates()
     self._filter_result_index()
 
-    path = project_dir / config.VALIDATED_DATA / 'id_corrections.csv'
+    path = project_dir / config.VALIDATED_DATA / config.ID_CORRECTIONS
 
     if path.is_file():
       self.log.info('Found id_corrections.csv')
@@ -183,14 +184,14 @@ class Normalizer():
 
       # Make a copy of the column 'rule' and then remove it so it is possible to
       # compare if the two DataFrames are equal.
-      id_corrections_rule = id_corrections.get(['rule'])
-      id_corrections.drop(['rule'],axis=1, inplace=True)
+      id_corrections_rule = id_corrections.get(['rule','argument'])
+      id_corrections.drop(['rule','argument'],axis=1, inplace=True)
 
       if not self.result_index.equals(id_corrections):
         self.log.info('Updating id_corrections.csv')
         combined_pd = pd.concat([id_corrections, self.result_index])
         combined_pd.drop_duplicates(inplace=True)
-        combined_pd['rule'] = id_corrections_rule
+        combined_pd[['rule','argument']] = id_corrections_rule
 
         combined_pd.to_csv(path, index=False)
 
@@ -198,7 +199,7 @@ class Normalizer():
         self.log.info('id_corrections.csv is Up-To-Date')
 
     elif found_id_not_in_project or found_pid_duplicates:
-      self.result_index['rule'] = None
+      self.result_index[['rule','argument']] = None
       self.result_index.to_csv(path, index=False)
 
       self.log.info(
@@ -214,6 +215,33 @@ class Normalizer():
         'No duplicate IDs or IDs not in project found in %s',
         self.current_project_title
       )
+
+  def validate_id_corrections(self, project_dir: Path):
+    """Check that all entries in id_corrections have a correct action and
+      argument.
+    """
+    path = project_dir / config.VALIDATED_DATA / config.ID_CORRECTIONS
+
+    if not path.is_file():
+      return
+
+    self.log.info('Validating id_corrections.csv')
+    self.id_corrections = pd.read_csv(path)
+
+    # Check if there are missing rules
+    if not self.id_corrections["rule"].notnull().all():
+      self.log.critical('Not all rows in id_corrections.csv have a rule')
+      sys.exit(1)
+
+    # Check if all rules are correct
+    user_rules = set(id_corrections["rule"].unique())
+    if not user_rules.issubset(config.rules):
+      self.log.critical(
+        'Wrong rule applied, check documentation for all rules.'
+        ' Rule error: %s',
+        user_rules - config.rules
+      )
+      sys.exit(1)
 
   def repair_json_data(self, incomplete_json: bytes) -> str:
     """Fix corrupt JSON data by adding missing brackets and data wrapper.
@@ -288,8 +316,8 @@ class Normalizer():
 
   def get_task_info(self, data: str) -> TaskInfo:
     title = self.get_task_title(data)
-    name = utils.get_part_of_string(title, config.REGEX_TASK_NAME)
-    version = utils.get_part_of_string(title, config.REGEX_TASK_VERSION)
+    name = utils.regex(title, config.REGEX_TASK_NAME)
+    version = utils.regex(title, config.REGEX_TASK_VERSION)
 
     return TaskInfo(title=title, name=name.strip(), version=version)
 
@@ -343,12 +371,18 @@ class Normalizer():
 
       self.load_result_index(project_dir / config.RESULT_INDEX)
       self.validate_pids(project_dir)
+      self.validate_id_corrections(project_dir)
 
       self._check_validated_data_dir(path)
 
       path_raw_data = project_dir / config.RAW_DATA
 
       for file in path_raw_data.glob('*.gz'):
+        pid = utils.regex(file.name, config.REGEX_RESULT_PID, group=1)
+        rid = utils.regex(file.name, config.REGEX_RESULT_RID, group=1)
+
+        #self.id_corrections[
+
         data = self.load_participant_raw_data(file)
         task_info = self.get_task_info(data)
         mapping = self.get_mapping(task_info)
