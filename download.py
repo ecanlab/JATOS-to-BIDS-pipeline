@@ -153,7 +153,9 @@ class JatosDownloader:
       raise
 
     except KeyError as e:
-      self.log.error('Failed to fetch metadata for study id %s: %s', study_id, e)
+      self.log.error(
+        'Failed to fetch metadata for study id %s: %s', study_id, e
+      )
       raise
 
   def get_result_index_values(
@@ -196,7 +198,9 @@ class JatosDownloader:
       date_last_seen_local_tz = utils.convert_to_local_tz(date_last_seen)
       data.append(date_last_seen_local_tz)
 
-    data.append(metadata.get('duration', None))
+    # Adding "'" so excel wont change the format.
+    data.append("'" + metadata.get('duration', None))
+
 
     data.append(metadata.get('urlQueryParameters', {}).get('pid', None))
     data.append(metadata.get('studyState', None))
@@ -300,14 +304,14 @@ class JatosDownloader:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_file():
       self.log.info(
-        'Found result_index_file.csv for project %s',
+        'Found result_index.csv for project %s',
         self.current_project_title
       )
       df = pd.read_csv(path)
       return df
 
     self.log.info(
-      'Did not find result_index_file.csv for project %s, creating one',
+      'Did not find result_index.csv for project %s, creating one',
       self.current_project_title
     )
 

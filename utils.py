@@ -41,7 +41,7 @@ def get_all_project_dirs(project_root: Path) -> list[Path]:
       dirs.append(dir)
   return dirs
 
-def regex(text: str, regex: str, group: int =0) -> str:
+def regex(text: str, regex: str, group: int | None = 0) -> str | re.Match:
   '''
   Get the matching regex from a string.
 
@@ -51,17 +51,20 @@ def regex(text: str, regex: str, group: int =0) -> str:
   ARGS:
     text: The string that will be searched.
     regex: Raw string regex pattern to match against the text.
-    group: Specify a subgroups of the match.
+    group: Specify a subgroups of the match or None to return the whole result.
 
   RETURNS:
     str: The matching string or an empty string if nothing was found.
   '''
   result = re.search(regex, text)
 
-  if result:
-    return result.group(group)
-  else:
+  if not result:
     return ''
+
+  if group is None:
+    return result
+
+  return result.group(group)
 
 def convert_to_local_tz(date_ms: float) -> str:
   '''
