@@ -176,15 +176,15 @@ class Normalizer():
     found_pid_duplicates = self.find_pid_duplicates()
     self._filter_result_index()
 
-    path = project_dir / config.VALIDATED_DATA / config.ID_CORRECTIONS
+    path = project_dir / config.ID_CORRECTIONS
 
     if path.is_file():
       self.log.info('Found id_corrections.csv')
       id_corrections = pd.read_csv(path)
 
-      # Make a copy of the column 'rule' and then remove it so it is possible to
-      # compare if the two DataFrames are equal.
-      id_corrections_rule = id_corrections.get(['rule','argument'])
+      # Make a copy of the column 'rule' and 'argument' then remove it so it is'
+      # possible to compare if the two DataFrames are equal.
+      id_corrections_rule = id_corrections[['rule','argument']].copy()
       id_corrections.drop(['rule','argument'],axis=1, inplace=True)
 
       if not self.result_index.equals(id_corrections):
@@ -216,11 +216,32 @@ class Normalizer():
         self.current_project_title
       )
 
+  def _get_rule(self, rid: int, pid: int) -> config.Rule:
+    rule = self.id_corrections.loc[
+      (self.id_corrections["result_id"] == rid) &
+      (self.id_corrections["participant_id"] == pid),
+      "rule"
+    ].iloc[0]
+
+    rule = config.Rule(rule)
+
+    return rule
+
+  def _get_argument(self, rid: int, pid: int, rule: str) -> str:
+    argument = self.id_corrections.loc[
+      (self.id_corrections["result_id"] == rid) &
+      (self.id_corrections["participant_id"] == pid) &
+      (self.id_corrections["rule"] == rule.value) ,
+      "argument"
+    ].iloc[0]
+
+    return argument
+
   def validate_id_corrections(self, project_dir: Path):
     """Check that all entries in id_corrections have a correct action and
       argument.
     """
-    path = project_dir / config.VALIDATED_DATA / config.ID_CORRECTIONS
+    path = project_dir / config.ID_CORRECTIONS
 
     if not path.is_file():
       return
@@ -234,7 +255,7 @@ class Normalizer():
       sys.exit(1)
 
     # Check if all rules are correct
-    user_rules = set(id_corrections["rule"].unique())
+    user_rules = set(self.id_corrections["rule"].unique())
     if not user_rules.issubset(config.rules):
       self.log.critical(
         'Wrong rule applied, check documentation for all rules.'
@@ -343,7 +364,7 @@ class Normalizer():
     # Opensesame structure
     if isinstance(data, dict):
       self.log.info(
-        'Found Openseamse structure in the raw data, collecting variables'
+        'Found Opensesame structure in the raw data, collecting variables'
       )
       for trial in data['data']:
         df.loc[len(df)] = [trial.get(k, None) for k in mapping.values()]
@@ -363,6 +384,11 @@ class Normalizer():
     self.project_config = self.validate_project_config(project_config)
 
     project_dirs = utils.get_all_project_dirs(self.project_root)
+    if not project_dirs:
+      self.log.critical(
+        'Did not find any project directoris, run the download script first'
+      )
+      sys.exit(1)
 
     for project_dir in project_dirs:
       self.current_project_title = project_dir.name
@@ -378,10 +404,15 @@ class Normalizer():
       path_raw_data = project_dir / config.RAW_DATA
 
       for file in path_raw_data.glob('*.gz'):
-        pid = utils.regex(file.name, config.REGEX_RESULT_PID, group=1)
-        rid = utils.regex(file.name, config.REGEX_RESULT_RID, group=1)
+        rid = int(utils.regex(file.name, config.REGEX_RESULT_RID, group=1))
+        pid = int(utils.regex(file.name, config.REGEX_RESULT_PID, group=1))
 
-        #self.id_corrections[
+        rule = self._get_rule(rid, pid)
+
+        if rule == config.Rule.EXCLUDE:
+          self.log.debug('Excluding %s', file.name)
+          continue
+
 
         data = self.load_participant_raw_data(file)
         task_info = self.get_task_info(data)
@@ -392,9 +423,18 @@ class Normalizer():
         df = utils.create_df_with_headers(mapping)
         df = self.populate_df(df, mapping, data)
         filename = file.name.replace('.txt.gz', '.csv')
+
+        if rule == config.Rule.REASSIGN_ID:
+          new_pid = str(int(self._get_argument(rid, pid, rule)))
+          match = utils.regex(filename, config.REGEX_RESULT_PID, group=None)
+          start = filename[:match.start()]
+          end   = filename[match.end():]
+          filename = start  + 'pid-' + new_pid + end
+
         filepath = path / filename
         self.log.info('Saving validated data to %s', filepath.name)
         df.to_csv(filepath, index=False)
+
 
     self.log.info('Validation completed')
 
