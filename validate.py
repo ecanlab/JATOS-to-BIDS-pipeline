@@ -379,6 +379,16 @@ class Normalizer():
 
     return df
 
+  def _new_filename(self, filename: str) -> str:
+    new_pid = str(int(self._get_argument(rid, pid, rule)))
+    match = utils.regex(filename, config.REGEX_RESULT_PID, group=None)
+    start = filename[:match.start()]
+    end   = filename[match.end():]
+    filename = start  + 'pid-' + new_pid + end
+
+    return filename
+
+
   def run(self):
     project_config = self.load_project_config()
     self.project_config = self.validate_project_config(project_config)
@@ -425,16 +435,11 @@ class Normalizer():
         filename = file.name.replace('.txt.gz', '.csv')
 
         if rule == config.Rule.REASSIGN_ID:
-          new_pid = str(int(self._get_argument(rid, pid, rule)))
-          match = utils.regex(filename, config.REGEX_RESULT_PID, group=None)
-          start = filename[:match.start()]
-          end   = filename[match.end():]
-          filename = start  + 'pid-' + new_pid + end
+          filename = self._new_filename(filename)
 
         filepath = path / filename
         self.log.info('Saving validated data to %s', filepath.name)
         df.to_csv(filepath, index=False)
-
 
     self.log.info('Validation completed')
 
