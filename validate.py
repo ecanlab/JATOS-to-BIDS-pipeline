@@ -264,6 +264,17 @@ class Normalizer():
       )
       sys.exit(1)
 
+    # Check that all rules that requiers an argument has one
+    arguments = self.id_corrections.loc[
+      (self.id_corrections["rule"] == config.Rule.REASSIGN_ID.value) ,
+      "argument"
+    ]
+    if  arguments.isna().any():
+      self.log.critical(
+        'Missing argument for reassign_id, check id_corrections.csv'
+        )
+      sys.exit(1)
+
   def repair_json_data(self, incomplete_json: bytes) -> str:
     """Fix corrupt JSON data by adding missing brackets and data wrapper.
 
@@ -379,7 +390,7 @@ class Normalizer():
 
     return df
 
-  def _new_filename(self, filename: str) -> str:
+  def _new_filename(self, rid: int, pid: int, rule: str, filename: str) -> str:
     new_pid = str(int(self._get_argument(rid, pid, rule)))
     match = utils.regex(filename, config.REGEX_RESULT_PID, group=None)
     start = filename[:match.start()]
@@ -435,7 +446,7 @@ class Normalizer():
         filename = file.name.replace('.txt.gz', '.csv')
 
         if rule == config.Rule.REASSIGN_ID:
-          filename = self._new_filename(filename)
+          filename = self._new_filename(rid, pid, rule, filename)
 
         filepath = path / filename
         self.log.info('Saving validated data to %s', filepath.name)
