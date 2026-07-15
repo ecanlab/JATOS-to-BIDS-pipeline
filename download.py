@@ -304,14 +304,16 @@ class JatosDownloader:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_file():
       self.log.info(
-        'Found result_index.csv for project %s',
+        'Found %s for project %s',
+        config.RESULT_INDEX,
         self.current_project_title
       )
       df = pd.read_csv(path)
       return df
 
     self.log.info(
-      'Did not find result_index.csv for project %s, creating one',
+      'Did not find %s for project %s, creating one',
+      config.RESULT_INDEX,
       self.current_project_title
     )
 
@@ -422,7 +424,7 @@ class JatosDownloader:
         )
         df.at[index, 'download_status'] = config.DOWNLOAD_FAILED
 
-      df.to_csv(result_index_path, index=False)
+      df.to_csv(result_index_path, sep='\t', index=False)
 
   def run(self):
     try:
