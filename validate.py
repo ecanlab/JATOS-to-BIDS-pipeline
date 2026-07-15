@@ -59,8 +59,8 @@ class Normalizer():
 
     if not path.is_file():
       self.log.critical(
-        'Did not find project_config.json in %s. Create the file and fill out'
-        ' the structure according to the documentation.',
+        'Did not find project_config.json in %s. Create the file and fill out '
+        'the structure according to the documentation.',
         path
       )
       sys.exit(1)
@@ -93,25 +93,26 @@ class Normalizer():
       )
 
   def load_result_index(self, path: Path):
-    """Load result index csv file.
+    """Load result index tsv file.
 
     Args:
-      path: Path to result index csv.
+      path: Path to result index tsv.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.is_file():
       self.log.info(
-        'Did not find result_index.csv for project %s, run the download'
-        ' script first',
+        'Did not find result_index.tsv for project %s, run the download '
+        'script first',
         self.current_project_title
       )
       sys.exit(1)
 
     self.log.info(
-      'Found result_index.csv for project %s',
+      'Found %s for project %s',
+      config.RESULT_INDEX,
       self.current_project_title
     )
-    self.result_index = pd.read_csv(path)
+    self.result_index = pd.read_csv(path, sep='\t')
 
   def find_id_not_in_project(self) -> bool:
     """Updateda the result index with a new coulumn.
@@ -131,8 +132,8 @@ class Normalizer():
 
     if self.result_index["not_in_project_id"].any():
       self.log.warning(
-        'Found participant ID that is not part of the project, check'
-        ' id_corrections.csv'
+        'Found participant ID that is not part of the project, check %s',
+        config.ID_CORRECTIONS.name
       )
       return True
     return False
@@ -156,7 +157,8 @@ class Normalizer():
 
     if duplicates.any():
       self.log.warning(
-        'Found duplicate participant ID, check id_corrections.csv'
+        'Found duplicate participant ID, check %s',
+        config.ID_CORRECTIONS.name
       )
       return True
     return False
@@ -179,8 +181,11 @@ class Normalizer():
     path = project_dir / config.ID_CORRECTIONS
 
     if path.is_file():
-      self.log.info('Found id_corrections.csv')
-      id_corrections = pd.read_csv(path)
+      self.log.info(
+        'Found %s',
+        config.ID_CORRECTIONS.name
+      )
+      id_corrections = pd.read_csv(path, sep='\t')
 
       # Make a copy of the column 'rule' and 'argument' then remove it so it is'
       # possible to compare if the two DataFrames are equal.
@@ -188,24 +193,30 @@ class Normalizer():
       id_corrections.drop(['rule','argument'],axis=1, inplace=True)
 
       if not self.result_index.equals(id_corrections):
-        self.log.info('Updating id_corrections.csv')
+        self.log.info(
+          'Updating %s',
+          config.ID_CORRECTIONS.name
+        )
         combined_pd = pd.concat([id_corrections, self.result_index])
         combined_pd.drop_duplicates(inplace=True)
         combined_pd[['rule','argument']] = id_corrections_rule
 
-        combined_pd.to_csv(path, index=False)
+        combined_pd.to_csv(path, sep='\t' , index=False)
 
       else:
-        self.log.info('id_corrections.csv is Up-To-Date')
+        self.log.info(
+          '%s is Up-To-Date',
+          config.ID_CORRECTIONS.name
+        )
 
     elif found_id_not_in_project or found_pid_duplicates:
       self.result_index[['rule','argument']] = None
-      self.result_index.to_csv(path, index=False)
+      self.result_index.to_csv(path, sep='\t', index=False)
 
       self.log.info(
-        'Created %s, in %s validated data, please fill in an action for each'
-        ' row. Read the documentation for information about the different'
-        ' actions',
+        'Created %s, in %s validated data, please fill in an action for each '
+        'row. Read the documentation for information about the different '
+        'actions',
         path.name,
         self.current_project_title
       )
@@ -246,20 +257,23 @@ class Normalizer():
     if not path.is_file():
       return
 
-    self.log.info('Validating id_corrections.csv')
-    self.id_corrections = pd.read_csv(path)
+    self.log.info('Validating %s', config.ID_CORRECTIONS.name)
+    self.id_corrections = pd.read_csv(path, sep='\t')
 
     # Check if there are missing rules
     if not self.id_corrections["rule"].notnull().all():
-      self.log.critical('Not all rows in id_corrections.csv have a rule')
+      self.log.critical(
+        'Not all rows in %s have a rule',
+        config.ID_CORRECTIONS.name
+      )
       sys.exit(1)
 
     # Check if all rules are correct
     user_rules = set(self.id_corrections["rule"].unique())
     if not user_rules.issubset(config.rules):
       self.log.critical(
-        'Wrong rule applied, check documentation for all rules.'
-        ' Rule error: %s',
+        'Wrong rule applied, check documentation for all rules. '
+        'Rule error: %s',
         user_rules - config.rules
       )
       sys.exit(1)
@@ -271,7 +285,8 @@ class Normalizer():
     ]
     if  arguments.isna().any():
       self.log.critical(
-        'Missing argument for reassign_id, check id_corrections.csv'
+        'Missing argument for reassign_id, check %s',
+        config.ID_CORRECTIONS.name
         )
       sys.exit(1)
 
@@ -392,7 +407,7 @@ class Normalizer():
 
   def _new_filename(self, rid: int, pid: int, rule: str, filename: str) -> str:
     new_pid = str(int(self._get_argument(rid, pid, rule)))
-    match = utils.regex(filename, config.REGEX_RESULT_PID, group=None)
+    match = utils.regex(filename, config.REGEX_SUB, group=None)
     start = filename[:match.start()]
     end   = filename[match.end():]
     filename = start  + 'pid-' + new_pid + end
@@ -426,9 +441,9 @@ class Normalizer():
 
       for file in path_raw_data.glob('*.gz'):
         rid = int(utils.regex(file.name, config.REGEX_RESULT_RID, group=1))
-        pid = int(utils.regex(file.name, config.REGEX_RESULT_PID, group=1))
+        sub = int(utils.regex(file.name, config.REGEX_SUB, group=1))
 
-        rule = self._get_rule(rid, pid)
+        rule = self._get_rule(rid, sub)
 
         if rule == config.Rule.EXCLUDE:
           self.log.debug('Excluding %s', file.name)
@@ -443,14 +458,14 @@ class Normalizer():
 
         df = utils.create_df_with_headers(mapping)
         df = self.populate_df(df, mapping, data)
-        filename = file.name.replace('.txt.gz', '.csv')
+        filename = file.name.replace('.txt.gz', '.tsv')
 
         if rule == config.Rule.REASSIGN_ID:
-          filename = self._new_filename(rid, pid, rule, filename)
+          filename = self._new_filename(rid, sub, rule, filename)
 
         filepath = path / filename
         self.log.info('Saving validated data to %s', filepath.name)
-        df.to_csv(filepath, index=False)
+        df.to_csv(filepath, sep='\t', index=False)
 
     self.log.info('Validation completed')
 
