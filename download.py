@@ -293,13 +293,13 @@ class JatosDownloader:
       raise
 
   def load_or_create_result_index(self, path: Path) -> pd.DataFrame:
-    """ Load or create result index csv file.
+    """ Load or create result index tsv file.
 
     Args:
-      path: Path to result index csv.
+      path: Path to result index tsv.
 
     Returns:
-      A DataFrame object with the content from the csv or only the headers.
+      A DataFrame object with the content from the tsv or only the headers.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_file():
@@ -308,7 +308,7 @@ class JatosDownloader:
         config.RESULT_INDEX,
         self.current_project_title
       )
-      df = pd.read_csv(path)
+      df = pd.read_csv(path, sep='\t')
       return df
 
     self.log.info(
@@ -366,7 +366,7 @@ class JatosDownloader:
 
     sufix: int = 1
 
-    df.to_csv(result_index_path, index=False)
+    df.to_csv(result_index_path, sep='\t', index=False)
 
   def _construct_result_filename(self, title: str, pid: str, rid: int) -> str:
     ses  = utils.regex(title, config.REGEX_PROJECT_SES)
@@ -397,7 +397,7 @@ class JatosDownloader:
       Download and writes files to disk.
     """
     result_index_path = directory / config.RESULT_INDEX
-    df = pd.read_csv(result_index_path)
+    df = pd.read_csv(result_index_path, sep='\t')
 
     raw_data_dir = self.project_root / directory / config.RAW_DATA
 
