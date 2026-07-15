@@ -370,7 +370,7 @@ class JatosDownloader:
     arm  = utils.regex(title, config.REGEX_PROJECT_ARM)
     ses  = utils.regex(title, config.REGEX_PROJECT_SES)
     task = utils.regex(title, config.REGEX_PROJECT_TASK)
-    return f'pid-{pid}_rid-{rid}{arm}{ses}{task}.txt.gz'
+    return f'sub-{pid}_rid-{rid}{arm}{ses}{task}.txt.gz'
 
   def _process_and_save_result(
       self,
