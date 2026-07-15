@@ -410,7 +410,7 @@ class Normalizer():
     match = utils.regex(filename, config.REGEX_SUB, group=None)
     start = filename[:match.start()]
     end   = filename[match.end():]
-    filename = start  + 'pid-' + new_pid + end
+    filename = start  + 'sub-' + new_pid + end
 
     return filename
 

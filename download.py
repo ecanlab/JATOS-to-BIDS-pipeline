@@ -371,7 +371,12 @@ class JatosDownloader:
   def _construct_result_filename(self, title: str, pid: str, rid: int) -> str:
     ses  = utils.regex(title, config.REGEX_PROJECT_SES)
     task = utils.regex(title, config.REGEX_PROJECT_TASK)
-    return f'sub-{pid}_rid-{rid}{ses}{task}.txt.gz'
+    filename = f'sub-{pid}_rid-{rid}_'
+    if ses:
+      filename += f'{ses}_'
+
+    filename += f'{task}.txt.gz'
+    return filename
 
   def _process_and_save_result(
       self,

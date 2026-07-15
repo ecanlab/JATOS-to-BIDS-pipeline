@@ -8,7 +8,7 @@ RAW_DATA       = Path('sourcedata/JATOS/raw_data/')
 RESULT_INDEX   = Path(RAW_DATA / 'result_index.tsv')
 PROJECT_CONFIG = Path('code/JATOS/project_config.json')
 VALIDATED_DATA = Path('sourcedata/JATOS/validated_data')
-ID_CORRECTIONS = Path(VALIDATED_DATA / 'id_corrections.csv')
+ID_CORRECTIONS = Path(VALIDATED_DATA / 'id_corrections.tsv')
 DOWNLOAD_LOG   = Path('code/JATOS/logs/download.log')
 VALIDATE_LOG   = Path('code/JATOS/logs/validate.log')
 
@@ -25,10 +25,10 @@ RESULT_INDEX_HEADERS = [
 
 # Regex
 REGEX_PROJECT_TITLE  = r'^[^_]+'
-xREGEX_PROJECT_SES    = r'_ses-[^_]+'
-REGEX_PROJECT_TASK   = r'_task-[^_]+'
-REGEX_RESULT_PID     = r'pid-([^_]+)'
-REGEX_RESULT_RID     = r'_rid-([^_]+)'
+REGEX_PROJECT_SES    = r'ses-[^_]+'
+REGEX_PROJECT_TASK   = r'task-[^.]+'
+REGEX_SUB            = r'sub-([^_]+)'
+REGEX_RESULT_RID     = r'rid-([^_]+)'
 REGEX_TASK_NAME      = r'^(?:(?!\bv\.\d+(?:\.\d+)*\b).)*'
 REGEX_TASK_VERSION   = r'v\.\d+(?:\.\d+)*'
 
