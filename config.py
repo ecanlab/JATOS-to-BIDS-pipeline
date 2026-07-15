@@ -5,7 +5,7 @@ from pathlib import Path
 # Paths
 JATOS_FOLDER   = Path('sourcedata/JATOS')
 RAW_DATA       = Path('sourcedata/JATOS/raw_data/')
-RESULT_INDEX   = Path(RAW_DATA / 'result_index.csv')
+RESULT_INDEX   = Path(RAW_DATA / 'result_index.tsv')
 PROJECT_CONFIG = Path('code/JATOS/project_config.json')
 VALIDATED_DATA = Path('sourcedata/JATOS/validated_data')
 ID_CORRECTIONS = Path(VALIDATED_DATA / 'id_corrections.csv')
@@ -25,8 +25,7 @@ RESULT_INDEX_HEADERS = [
 
 # Regex
 REGEX_PROJECT_TITLE  = r'^[^_]+'
-REGEX_PROJECT_ARM    = r'_arm-[^_]+'
-REGEX_PROJECT_SES    = r'_ses-[^_]+'
+xREGEX_PROJECT_SES    = r'_ses-[^_]+'
 REGEX_PROJECT_TASK   = r'_task-[^_]+'
 REGEX_RESULT_PID     = r'pid-([^_]+)'
 REGEX_RESULT_RID     = r'_rid-([^_]+)'

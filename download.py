@@ -369,10 +369,9 @@ class JatosDownloader:
     df.to_csv(result_index_path, index=False)
 
   def _construct_result_filename(self, title: str, pid: str, rid: int) -> str:
-    arm  = utils.regex(title, config.REGEX_PROJECT_ARM)
     ses  = utils.regex(title, config.REGEX_PROJECT_SES)
     task = utils.regex(title, config.REGEX_PROJECT_TASK)
-    return f'sub-{pid}_rid-{rid}{arm}{ses}{task}.txt.gz'
+    return f'sub-{pid}_rid-{rid}{ses}{task}.txt.gz'
 
   def _process_and_save_result(
       self,
