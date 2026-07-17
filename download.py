@@ -454,9 +454,9 @@ class JatosDownloader:
 
 if __name__ == "__main__":
   load_dotenv()
-  base_url  = os.getenv('base_url')
-  api_token = os.getenv('api_token')
-  project_root = os.getenv('project_root')
+  base_url  = os.getenv('BASE_URL')
+  api_token = os.getenv('API_TOKEN')
+  project_root = os.getenv('PROJECT_ROOT')
 
   if not base_url or not api_token or not project_root:
     print('base_url, api_token and project_root must be set in .env file')
