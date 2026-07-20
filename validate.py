@@ -35,7 +35,7 @@ class TaskInfo:
   name: str
   version: str
 
-class Normalizer():
+class Validator():
   def __init__ (self, project_root: str, log: logging.Logger):
     self.project_root = Path(project_root)
     self.log = log
@@ -125,8 +125,20 @@ class Normalizer():
       project, othervise False.
     """
     self.log.info('Checking if all participant IDs are part of the project')
+    try:
+      project = self.project_config.project.get(self.current_project_title)
+      project_ids = project.get(ids)
+    except Exception:
+      self.log.warning(
+        'Did not find IDs for %s in  %s, update %s if you want the script to '
+        'automatically check if all IDs are part of the project',
+        self.current_project_title,
+        config.PROJECT_CONFIG.name,
+        config.PROJECT_CONFIG.name
+      )
+      self.result_index["not_in_project_id"] = False
+      return False
 
-    project_ids = self.project_config.project[self.current_project_title].ids
     self.result_index["not_in_project_id"] = \
       ~self.result_index["participant_id"].isin(project_ids)
 
@@ -228,11 +240,15 @@ class Normalizer():
       )
 
   def _get_rule(self, rid: int, pid: int) -> config.Rule:
-    rule = self.id_corrections.loc[
+    row = self.id_corrections.loc[
       (self.id_corrections["result_id"] == rid) &
       (self.id_corrections["participant_id"] == pid),
       "rule"
-    ].iloc[0]
+    ]
+
+    if row.empty:
+      return config.Rule.KEEP
+    rule = row.iloc[0]
 
     rule = config.Rule(rule)
 
@@ -449,7 +465,6 @@ class Normalizer():
           self.log.debug('Excluding %s', file.name)
           continue
 
-
         data = self.load_participant_raw_data(file)
         task_info = self.get_task_info(data)
         mapping = self.get_mapping(task_info)
@@ -480,5 +495,5 @@ if __name__ == "__main__":
   log = log_util.setupLogging(project_root / config.VALIDATE_LOG)
   log.info('Configuration loaded successfully')
 
-  normalizer = Normalizer(project_root, log)
-  normalizer.run()
+  validator = Validator(project_root, log)
+  validator.run()
