@@ -38,6 +38,9 @@ TIME_FORMAT = "%Y-%m-%dT%H:%M:%S"
 # Get the local timezone
 LOCAL_TZ = datetime.datetime.now().astimezone().tzinfo
 
+# ID keys
+ID_KEYS = ['pid', 'PID', 'id', 'ID']
+
 # ID correction rules
 class Rule(Enum):
   KEEP = 'keep'

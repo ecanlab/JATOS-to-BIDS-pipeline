@@ -209,8 +209,12 @@ class JatosDownloader:
 
     return data
 
-  def _get_pid(self, metadata: list[dict[Any, Any]]) -> str:
-    return metadata[0].get('urlQueryParameters', {}).get('pid', None)
+  def _get_pid(self, metadata: list[dict[Any, Any]]) -> str | None:
+    for key in config.ID_KEYS:
+      pid = metadata[0].get('urlQueryParameters', {}).get(key, None)
+      if pid is not None:
+        return pid
+    return None
 
   def get_result_data(self, result_id: int) -> io.BytesIO:
     """ Fetches result data as a zip file.
@@ -349,7 +353,7 @@ class JatosDownloader:
     self.current_pid = self._get_pid(study_metadata)
     if not self.current_pid:
       self.log.warning(
-        'Could not get pid from study %s resultd id %s, all studies needs to'
+        'Could not get pid from study %s result id %s, all studies needs to '
         'store pid in urlQueryParameters or in data as either pid or id',
         study.title, self.current_result_id
       )
