@@ -139,7 +139,11 @@ class JatosDownloader:
       into JSON
     """
     url = f'{self.base_url}results/metadata'
-    self.log.info('Fetching study metadata for study id %s', study_id)
+    self.log.info(
+      'Fetching study metadata for %s ID %s',
+      self.current_study_title,
+      study_id
+    )
     response = self._fetch(url, {'studyId': study_id})
     try:
       data = response.json()['data']
@@ -149,6 +153,14 @@ class JatosDownloader:
 
     except requests.exceptions.JSONDecodeError as e:
       self.log.error('Invalid JSON response: %s', e)
+      raise
+
+    except IndexError:
+      self.log.info(
+        'Study %s ID %s have no results',
+        self.current_study_title,
+        study_id
+      )
       raise
 
     except KeyError as e:
@@ -194,22 +206,24 @@ class JatosDownloader:
     )
 
     data.append(metadata.get('uuid', None))
-
     data.append(self.current_study_id)
     data.append(self.current_study_uuid)
 
     date_start = metadata.get('startDate', None)
     if date_start:
-      date_start_local_tz = utils.convert_to_local_tz(date_start)
-      data.append(date_start_local_tz)
+      date_start = utils.convert_to_local_tz(date_start)
+    data.append(date_start)
 
     date_last_seen = metadata.get('lastSeenDate', None)
     if date_last_seen:
-      date_last_seen_local_tz = utils.convert_to_local_tz(date_last_seen)
-      data.append(date_last_seen_local_tz)
+      date_last_seen = utils.convert_to_local_tz(date_last_seen)
+    data.append(date_last_seen)
 
-    # Adding "'" so excel wont change the format.
-    data.append("'" + metadata.get('duration', None))
+    duration = metadata.get('duration', None)
+    if duration:
+      # Adding "'" so excel wont change the format.
+      duration = "'" + duration
+    data.append(duration)
 
     data.append(self._get_pid(metadata))
     data.append(metadata.get('studyState', None))
@@ -219,7 +233,7 @@ class JatosDownloader:
     return data
 
   def get_result_data(self, result_id: int) -> io.BytesIO:
-    """ Fetches result data as a zip file.
+    """Fetches result data as a zip file.
 
     Args:
       id: Result id of a study.
@@ -294,6 +308,11 @@ class JatosDownloader:
       self.log.error('Failed to open zipfile: %s', e)
       raise
 
+    except IndexError:
+      self.log.info(
+        'No result found for %s', savepath.name
+      )
+
     except Exception as e:
       self.log.error('Failed to save file %s: %s', savepath.name, e)
       raise
@@ -333,7 +352,13 @@ class JatosDownloader:
     return results
 
   def _append_new_result(self, df, rows):
-    data = [self.get_result_index_values(row) for row in rows]
+    data = []
+    for row in rows:
+      try:
+        data.append(self.get_result_index_values(row))
+      except Exception as e:
+        self.log.error(e)
+
     new_df = pd.DataFrame(data, columns=df.columns)
     return pd.concat([new_df, df], ignore_index=True)
 
@@ -345,16 +370,15 @@ class JatosDownloader:
 
     Side effects: Saves files to disk.
     """
-    project_title = utils.regex(study.title, config.REGEX_PROJECT_TITLE)
-    result_index_path = self.project_root / project_title / config.RESULT_INDEX
-    study_metadata = self.get_study_metadata(study.id)
-
     # Variables for logging
     self.current_study_id = study.id
     self.current_study_uuid = study.uuid
     self.current_study_title = study.title
+    project_title = utils.regex(study.title, config.REGEX_PROJECT_TITLE)
     self.current_project_title = project_title
 
+    result_index_path = self.project_root / project_title / config.RESULT_INDEX
+    study_metadata = self.get_study_metadata(study.id)
     df = self.load_or_create_result_index(result_index_path)
     existing_uuids = set(df['result_uuid'])
 
@@ -400,6 +424,7 @@ class JatosDownloader:
     Side effects:
       Download and writes files to disk.
     """
+    self.current_project_title = directory.name
     result_index_path = directory / config.RESULT_INDEX
     df = pd.read_csv(result_index_path, sep='\t')
 
@@ -436,6 +461,8 @@ class JatosDownloader:
       for study in studies:
         try:
           self.process_study(study)
+        except IndexError:
+          continue
         except Exception as e:
           self.log.error('Study failed: %s, %s', study, e)
 
