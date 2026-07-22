@@ -120,7 +120,7 @@ class JatosDownloader:
 
     except KeyError as e:
       self.log.error(
-        'Missing key in resposene: %s. Make sure that JATOS save all metadata'
+        'Missing key in resposene: %s. Make sure that JATOS save all metadata '
         'for each study correctly.'
       )
       raise
