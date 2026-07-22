@@ -39,7 +39,6 @@ class JatosDownloader:
 
     self.current_study_id:      int | None = None
     self.current_study_uuid:    str | None = None
-    self.current_pid:           str | None = None
     self.current_result_id:     str | None = None
     self.current_study_title:   str | None = None
     self.current_project_title: str | None = None
@@ -158,6 +157,18 @@ class JatosDownloader:
       )
       raise
 
+  def _get_pid(self, metadata: list[dict[Any, Any]]) -> str | None:
+    for key in config.ID_KEYS:
+      pid = metadata.get('urlQueryParameters', {}).get(key, None)
+      if pid is not None:
+        return pid
+    self.log.error(
+      'Could not find participant ID for study %s result ID %s',
+      self.current_study_title,
+      self.current_result_id
+    )
+    return None
+
   def get_result_index_values(
       self,
       metadata: dict[str,Any]
@@ -174,13 +185,12 @@ class JatosDownloader:
 
     data.append(self.current_study_title)
 
-    result_id = metadata.get('id', None)
-    data.append(result_id)
-    self.current_result_id = result_id
+    self.current_result_id = metadata.get('id')
+    data.append(self.current_result_id)
 
     self.log.info(
-      'Extracting result metadata values from study %s with id %s',
-      self.current_study_title, self.current_result_id
+      'Extracting result ID %s metadata values from study %s',
+      self.current_result_id, self.current_study_title
     )
 
     data.append(metadata.get('uuid', None))
@@ -201,20 +211,12 @@ class JatosDownloader:
     # Adding "'" so excel wont change the format.
     data.append("'" + metadata.get('duration', None))
 
-
-    data.append(metadata.get('urlQueryParameters', {}).get('pid', None))
+    data.append(self._get_pid(metadata))
     data.append(metadata.get('studyState', None))
     data.append('-')
     data.append('not_downloaded')
 
     return data
-
-  def _get_pid(self, metadata: list[dict[Any, Any]]) -> str | None:
-    for key in config.ID_KEYS:
-      pid = metadata[0].get('urlQueryParameters', {}).get(key, None)
-      if pid is not None:
-        return pid
-    return None
 
   def get_result_data(self, result_id: int) -> io.BytesIO:
     """ Fetches result data as a zip file.
@@ -350,13 +352,6 @@ class JatosDownloader:
     # Variables for logging
     self.current_study_id = study.id
     self.current_study_uuid = study.uuid
-    self.current_pid = self._get_pid(study_metadata)
-    if not self.current_pid:
-      self.log.warning(
-        'Could not get pid from study %s result id %s, all studies needs to '
-        'store pid in urlQueryParameters or in data as either pid or id',
-        study.title, self.current_result_id
-      )
     self.current_study_title = study.title
     self.current_project_title = project_title
 
