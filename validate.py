@@ -486,7 +486,7 @@ class Validator():
 
 if __name__ == "__main__":
   load_dotenv()
-  project_root = os.getenv('project_root')
+  project_root = os.getenv('PROJECT_ROOT')
 
   if not project_root:
     print('project_root must be set in .env file')

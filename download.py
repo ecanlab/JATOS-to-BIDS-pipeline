@@ -263,7 +263,7 @@ class JatosDownloader:
       Writes a .gz file to disk.
     """
     self.log.info(
-      'Saving rawdata %s to project %s directory',
+      'Saving rawdata %s to project %s',
       savepath.name, self.current_project_title
     )
 
