@@ -27,13 +27,47 @@ class Project(BaseModel):
 
 class ProjectConfig(BaseModel):
   task: dict[str, Task]
-  project: dict[str, Ids]
+  project: dict[str, Ids] | None = None
 
 @dataclass
 class TaskInfo:
   title: str
   name: str
   version: str
+
+class ValidationError(Exception):
+  """Base class for validation errors."""
+  pass
+
+class NewIdCorrectionsFile(ValidationError):
+  """Raised when a new id_corrections.tsv is created in a project."""
+  pass
+
+class MissingRule(ValidationError):
+  """Raised when a rule is missing for a line in the id_corrections.tsv."""
+  pass
+
+class MissingAction(ValidationError):
+  """Raised when an action is missing for a rule in id_corrections.tsv."""
+  pass
+
+class WrongRule(ValidationError):
+  """Raised when a wrong rule is specified in id_corrections.tsv."""
+  pass
+
+class FileError(Exception):
+  """Base class for file error."""
+
+class BadZipFile(FileError):
+  """Raised when a zipfile cannot be opend."""
+  pass
+
+class JSONDecodeError(FileError):
+  """Raised when JSON structure cannot be loaded."""
+  pass
+
+class NoDataInFile(FileError):
+  """Raised when there is only one symbol in data."""
 
 class Validator():
   def __init__ (self, project_root: str, log: logging.Logger):
@@ -44,6 +78,8 @@ class Validator():
     self.project_config: ProjectConfig
 
     self.current_project_title: Path = None
+
+    self.tasks_with_no_mapping = set()
 
   def load_project_config(self) -> dict[str, Any]:
     """Load project config json file.
@@ -85,11 +121,10 @@ class Validator():
 
   def _check_validated_data_dir(self, validated_data_dir: Path):
     """Check if the validated data directory is empty and inform the user."""
-
-    if any(validated_data_dir.iterdir()):
-      self.log.warning(
-        '%s is not empty. Clear the directory for a clean run',
-        validated_data_dir
+    if len(list(validated_data_dir.iterdir())) > 1:
+      self.log.info(
+        '%s is not emty, clear the directory for a clean run',
+        validated_data_dir.name
       )
 
   def load_result_index(self, path: Path):
@@ -109,7 +144,7 @@ class Validator():
 
     self.log.info(
       'Found %s for project %s',
-      config.RESULT_INDEX,
+      config.RESULT_INDEX.name,
       self.current_project_title
     )
     self.result_index = pd.read_csv(path, sep='\t')
@@ -129,8 +164,8 @@ class Validator():
       project = self.project_config.project.get(self.current_project_title)
       project_ids = project.get(ids)
     except Exception:
-      self.log.warning(
-        'Did not find IDs for %s in  %s, update %s if you want the script to '
+      self.log.info(
+        'Did not find IDs for %s in %s, update %s if you want the script to '
         'automatically check if all IDs are part of the project',
         self.current_project_title,
         config.PROJECT_CONFIG.name,
@@ -168,16 +203,15 @@ class Validator():
     self.result_index["duplicate_id"] = duplicates
 
     if duplicates.any():
-      self.log.warning(
-        'Found duplicate participant ID, check %s',
-        config.ID_CORRECTIONS.name
-      )
+
       return True
     return False
 
   def _filter_result_index(self):
     cond = self.result_index[["not_in_project_id", "duplicate_id"]].any(axis=1)
     self.result_index = self.result_index[cond]
+    self.result_index = self.result_index.convert_dtypes()
+    self.result_index = self.result_index.reset_index(drop=True)
 
   def validate_pids(self, project_dir: Path):
     """Validate participant IDs by checking for duplicates and comparing all IDs
@@ -197,14 +231,29 @@ class Validator():
         'Found %s',
         config.ID_CORRECTIONS.name
       )
-      id_corrections = pd.read_csv(path, sep='\t')
+      id_corrections = pd.read_csv(
+        path, sep='\t', dtype={'participant_id':'string'}
+      )
+      id_corrections = id_corrections.convert_dtypes()
 
-      # Make a copy of the column 'rule' and 'argument' then remove it so it is'
+      # Make a copy of the column 'rule' and 'argument' then remove it so it is
       # possible to compare if the two DataFrames are equal.
       id_corrections_rule = id_corrections[['rule','argument']].copy()
       id_corrections.drop(['rule','argument'],axis=1, inplace=True)
 
       if not self.result_index.equals(id_corrections):
+        if found_id_not_in_project:
+          self.log.warning(
+            'Found participant ID that is not part of the project, check %s',
+            config.ID_CORRECTIONS.name
+          )
+
+        if found_pid_duplicates:
+          self.log.warning(
+            'Found duplicate participant ID, check %s',
+            config.ID_CORRECTIONS.name
+          )
+
         self.log.info(
           'Updating %s',
           config.ID_CORRECTIONS.name
@@ -222,6 +271,18 @@ class Validator():
         )
 
     elif found_id_not_in_project or found_pid_duplicates:
+      if found_id_not_in_project:
+        self.log.warning(
+          'Found participant ID that is not part of the project, check %s',
+          config.ID_CORRECTIONS.name
+        )
+
+      if found_pid_duplicates:
+        self.log.warning(
+          'Found duplicate participant ID, check %s',
+          config.ID_CORRECTIONS.name
+        )
+
       self.result_index[['rule','argument']] = None
       self.result_index.to_csv(path, sep='\t', index=False)
 
@@ -232,6 +293,7 @@ class Validator():
         path.name,
         self.current_project_title
       )
+      raise NewIdCorrectionsFile("New id_corrections.tsv was created")
 
     else:
       self.log.info(
@@ -278,21 +340,17 @@ class Validator():
 
     # Check if there are missing rules
     if not self.id_corrections["rule"].notnull().all():
-      self.log.critical(
-        'Not all rows in %s have a rule',
-        config.ID_CORRECTIONS.name
+      raise MissingRule(
+        f'Not all rows in {config.ID_CORRECTIONS.name} have a rule',
       )
-      sys.exit(1)
 
     # Check if all rules are correct
     user_rules = set(self.id_corrections["rule"].unique())
     if not user_rules.issubset(config.rules):
-      self.log.critical(
-        'Wrong rule applied, check documentation for all rules. '
-        'Rule error: %s',
-        user_rules - config.rules
+      raise WrongRule(
+        f'Wrong rule applied, check documentation for all rules. '
+        f'Rule error: {user_rules - config.rules}'
       )
-      sys.exit(1)
 
     # Check that all rules that requiers an argument has one
     arguments = self.id_corrections.loc[
@@ -300,13 +358,11 @@ class Validator():
       "argument"
     ]
     if  arguments.isna().any():
-      self.log.critical(
-        'Missing argument for reassign_id, check %s',
-        config.ID_CORRECTIONS.name
-        )
-      sys.exit(1)
+      raise MissingAction(
+        f'Missing action for reassign_id, check {config.ID_CORRECTIONS.name}'
+      )
 
-  def repair_json_data(self, incomplete_json: bytes) -> str:
+  def repair_json_data(self, incomplete_json: bytes, pos: int) -> str:
     """Fix corrupt JSON data by adding missing brackets and data wrapper.
 
     'incomplete_json' must be an OpenSesame style JSON fragment that ends
@@ -315,14 +371,16 @@ class Validator():
 
     Args:
       incomplete_json: JSON string missing closing brackets and data wrapper.
+      pos: The position from the end of the JSON where the ']' will be placed.
 
     Returns:
       Properly structured JSON string with data wrapper.
     """
-    incomplete_json_str = incomplete_json.decode()[:-2] + "]"
+    incomplete_json_str = incomplete_json.decode()[:-pos] + "]"
     fixed_json = '{"data":' + incomplete_json_str + ',"context":{"browser":{}}}'
+    json_content = json.loads(fixed_json)
 
-    return fixed_json
+    return json_content
 
   def load_participant_raw_data(self, path: Path) -> dict | None:
     """Load participant raw data
@@ -340,23 +398,33 @@ class Validator():
       self.log.info('Loading participant raw data data from %s', path.name)
       with gzip.open(path, 'r') as content:
         data = content.read()
+        if len(data) == 1:
+          raise NoDataInFile(f'File {path.name} dose not contain any data')
+
         json_content = json.loads(data)
       return json_content
 
     except gzip.BadGzipFile as e:
-      self.log.error('Failed to open zipfile: %s', e)
+      raise BadZipFile(f'Failed to open zipfile: {e}')
 
     except json.JSONDecodeError as e:
-      self.log.error('JSON decode error in file: %s: %s', path, e)
+      self.log.error('JSON decode error in file: %s: %s', path.name, e)
 
       try:
-        fixed_content = self.repair_json_data(data)
-        json_content = json.loads(fixed_content)
-        self.log.info('Error was fixed for file: %s', path)
+        json_content = self.repair_json_data(data, 2)
+        self.log.info('Error was fixed for file: %s', path.name)
         return json_content
 
       except json.JSONDecodeError as e:
-        self.log.error('Could not fix corrupt data in file: %s: %s', path, e)
+        try:
+          json_content = self.repair_json_data(data, 1)
+          self.log.info('Error was fixed for file: %s', path.name)
+          return json_content
+
+        except json.JSONDecodeError as e:
+          raise JSONDecodeError(
+            f'Could not fix corrupt data in file {path.name}, {e}'
+          )
 
     return None
 
@@ -386,13 +454,14 @@ class Validator():
 
   def get_mapping(self, task_info: TaskInfo) -> dict:
     try:
-      self.log.info('Found the mapping for %s', task_info.title)
+      self.log.info('Loading mapping for %s', task_info.title)
       task = self.project_config.task[task_info.name]
       version = task.version[task_info.version]
       return version.mapping
 
     except KeyError as e:
-      self.log.error('Could not find the mapping for %s, make sure to fill out'
+      self.tasks_with_no_mapping.add(task_info.title)
+      self.log.error('Could not find mapping for %s, make sure to fill out '
       'the project_config.json. %s'
       , task_info.title, e)
 
@@ -443,13 +512,20 @@ class Validator():
       sys.exit(1)
 
     for project_dir in project_dirs:
+      self.log.info('-- %s --', project_dir.name)
+
       self.current_project_title = project_dir.name
       path = project_dir / config.VALIDATED_DATA
       path.mkdir(True, exist_ok=True)
 
       self.load_result_index(project_dir / config.RESULT_INDEX)
-      self.validate_pids(project_dir)
-      self.validate_id_corrections(project_dir)
+      try:
+        self.validate_pids(project_dir)
+        self.validate_id_corrections(project_dir)
+
+      except ValidationError as e:
+        self.log.info('Skipping %s: %s', project_dir.name, e)
+        continue
 
       self._check_validated_data_dir(path)
 
@@ -457,7 +533,7 @@ class Validator():
 
       for file in path_raw_data.glob('*.gz'):
         rid = int(utils.regex(file.name, config.REGEX_RESULT_RID, group=1))
-        sub = int(utils.regex(file.name, config.REGEX_SUB, group=1))
+        sub = utils.regex(file.name, config.REGEX_SUB, group=1)
 
         rule = self._get_rule(rid, sub)
 
@@ -465,8 +541,16 @@ class Validator():
           self.log.debug('Excluding %s', file.name)
           continue
 
-        data = self.load_participant_raw_data(file)
+        try:
+          data = self.load_participant_raw_data(file)
+        except FileError as e:
+          self.log.error(f'Error loading file: {e}')
+
         task_info = self.get_task_info(data)
+
+        if task_info.title in self.tasks_with_no_mapping:
+          continue
+
         mapping = self.get_mapping(task_info)
         if not mapping:
           continue
