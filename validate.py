@@ -40,19 +40,19 @@ class ValidationError(Exception):
   pass
 
 class NewIdCorrectionsFile(ValidationError):
-  """Raised when a new id_corrections.tsv is created in a project."""
-  pass
-
-class MissingRule(ValidationError):
-  """Raised when a rule is missing for a line in the id_corrections.tsv."""
+  """Raised when a new validation_protocol.tsv is created in a project."""
   pass
 
 class MissingAction(ValidationError):
-  """Raised when an action is missing for a rule in id_corrections.tsv."""
+  """Raised when a action is missing for a line in the validation_protocol.tsv."""
   pass
 
-class WrongRule(ValidationError):
-  """Raised when a wrong rule is specified in id_corrections.tsv."""
+class MissingArgument(ValidationError):
+  """Raised when an Argument is missing for a action in validation_protocol.tsv."""
+  pass
+
+class WrongAction(ValidationError):
+  """Raised when a wrong action is specified in validation_protocol.tsv."""
   pass
 
 class FileError(Exception):
@@ -74,7 +74,7 @@ class Validator():
     self.project_root = Path(project_root)
     self.log = log
     self.result_index: pd.DataFrame
-    self.id_corrections: pd.DataFrame
+    self.validation_protocol: pd.DataFrame
     self.project_config: ProjectConfig
 
     self.current_project_title: Path = None
@@ -180,7 +180,7 @@ class Validator():
     if self.result_index["not_in_project_id"].any():
       self.log.warning(
         'Found participant ID that is not part of the project, check %s',
-        config.ID_CORRECTIONS.name
+        config.VALIDATION_PROTOCOL.name
       )
       return True
     return False
@@ -190,8 +190,8 @@ class Validator():
        title.
 
     Returns:
-      A boolean value, True if there are IDs that are not part the of the
-      project, othervise False.
+      A boolean value, True if there are multiple rows with the same study
+       title, othervise False.
     """
     self.log.info('Checking for duplicate participant IDs')
 
@@ -213,6 +213,16 @@ class Validator():
     self.result_index = self.result_index.convert_dtypes()
     self.result_index = self.result_index.reset_index(drop=True)
 
+  def validate_pids2(self, project_dir: Path):
+    """Validate participant IDs by checking for duplicates and comparing all IDs
+    to the project participant IDs.
+
+    Args:
+      project_dir: The project folder.
+    """
+    found_id_not_in_project = self.find_id_not_in_project()
+    found_pid_duplicates = self.find_pid_duplicates()
+
   def validate_pids(self, project_dir: Path):
     """Validate participant IDs by checking for duplicates and comparing all IDs
     to the project participant IDs.
@@ -222,68 +232,67 @@ class Validator():
     """
     found_id_not_in_project = self.find_id_not_in_project()
     found_pid_duplicates = self.find_pid_duplicates()
-    self._filter_result_index()
 
-    path = project_dir / config.ID_CORRECTIONS
+    path = project_dir / config.VALIDATION_PROTOCOL
 
     if path.is_file():
       self.log.info(
         'Found %s',
-        config.ID_CORRECTIONS.name
+        config.VALIDATION_PROTOCOL.name
       )
-      id_corrections = pd.read_csv(
+      validation_protocol = pd.read_csv(
         path, sep='\t', dtype={'participant_id':'string'}
       )
-      id_corrections = id_corrections.convert_dtypes()
+      validation_protocol = validation_protocol.convert_dtypes()
 
-      # Make a copy of the column 'rule' and 'argument' then remove it so it is
+      # Make a copy of the column 'action' and 'argument' then remove it so it is
       # possible to compare if the two DataFrames are equal.
-      id_corrections_rule = id_corrections[['rule','argument']].copy()
-      id_corrections.drop(['rule','argument'],axis=1, inplace=True)
+      validation_protocol_action = validation_protocol[['action','argument']].copy()
+      validation_protocol.drop(['action','argument'],axis=1, inplace=True)
 
-      if not self.result_index.equals(id_corrections):
+      if not self.result_index.equals(validation_protocol):
         if found_id_not_in_project:
           self.log.warning(
             'Found participant ID that is not part of the project, check %s',
-            config.ID_CORRECTIONS.name
+            config.VALIDATION_PROTOCOL.name
           )
 
         if found_pid_duplicates:
           self.log.warning(
             'Found duplicate participant ID, check %s',
-            config.ID_CORRECTIONS.name
+            config.VALIDATION_PROTOCOL.name
           )
 
         self.log.info(
           'Updating %s',
-          config.ID_CORRECTIONS.name
+          config.VALIDATION_PROTOCOL.name
         )
-        combined_pd = pd.concat([id_corrections, self.result_index])
+        combined_pd = pd.concat([validation_protocol, self.result_index])
         combined_pd.drop_duplicates(inplace=True)
-        combined_pd[['rule','argument']] = id_corrections_rule
+        combined_pd[['action','argument']] = validation_protocol_action
 
         combined_pd.to_csv(path, sep='\t' , index=False)
 
       else:
         self.log.info(
           '%s is Up-To-Date',
-          config.ID_CORRECTIONS.name
+          config.VALIDATION_PROTOCOL.name
         )
 
     elif found_id_not_in_project or found_pid_duplicates:
       if found_id_not_in_project:
         self.log.warning(
           'Found participant ID that is not part of the project, check %s',
-          config.ID_CORRECTIONS.name
+          config.VALIDATION_PROTOCOL.name
         )
 
       if found_pid_duplicates:
         self.log.warning(
           'Found duplicate participant ID, check %s',
-          config.ID_CORRECTIONS.name
+          config.VALIDATION_PROTOCOL.name
         )
 
-      self.result_index[['rule','argument']] = None
+      self.result_index[['action','argument']] = None
       self.result_index.to_csv(path, sep='\t', index=False)
 
       self.log.info(
@@ -293,7 +302,7 @@ class Validator():
         path.name,
         self.current_project_title
       )
-      raise NewIdCorrectionsFile("New id_corrections.tsv was created")
+      raise NewIdCorrectionsFile("New validation_protocol.tsv was created")
 
     else:
       self.log.info(
@@ -301,65 +310,65 @@ class Validator():
         self.current_project_title
       )
 
-  def _get_rule(self, rid: int, pid: int) -> config.Rule:
-    row = self.id_corrections.loc[
-      (self.id_corrections["result_id"] == rid) &
-      (self.id_corrections["participant_id"] == pid),
-      "rule"
+  def _get_action(self, rid: int, pid: int) -> config.Action:
+    row = self.validation_protocol.loc[
+      (self.validation_protocol["result_id"] == rid) &
+      (self.validation_protocol["participant_id"] == pid),
+      "action"
     ]
 
     if row.empty:
-      return config.Rule.KEEP
-    rule = row.iloc[0]
+      return config.Action.KEEP
+    action = row.iloc[0]
 
-    rule = config.Rule(rule)
+    action = config.Action(action)
 
-    return rule
+    return action
 
-  def _get_argument(self, rid: int, pid: int, rule: str) -> str:
-    argument = self.id_corrections.loc[
-      (self.id_corrections["result_id"] == rid) &
-      (self.id_corrections["participant_id"] == pid) &
-      (self.id_corrections["rule"] == rule.value) ,
+  def _get_argument(self, rid: int, pid: int, action: str) -> str:
+    argument = self.validation_protocol.loc[
+      (self.validation_protocol["result_id"] == rid) &
+      (self.validation_protocol["participant_id"] == pid) &
+      (self.validation_protocol["action"] == action.value) ,
       "argument"
     ].iloc[0]
 
     return argument
 
-  def validate_id_corrections(self, project_dir: Path):
-    """Check that all entries in id_corrections have a correct action and
+  def validate_validation_protocol(self, project_dir: Path):
+    """Check that all entries in validation_protocol have a correct action and
       argument.
     """
-    path = project_dir / config.ID_CORRECTIONS
+    path = project_dir / config.VALIDATION_PROTOCOL
 
     if not path.is_file():
       return
 
-    self.log.info('Validating %s', config.ID_CORRECTIONS.name)
-    self.id_corrections = pd.read_csv(path, sep='\t')
+    self.log.info('Validating %s', config.VALIDATION_PROTOCOL.name)
+    self.validation_protocol = pd.read_csv(path, sep='\t')
 
-    # Check if there are missing rules
-    if not self.id_corrections["rule"].notnull().all():
-      raise MissingRule(
-        f'Not all rows in {config.ID_CORRECTIONS.name} have a rule',
+    # Check if there are missing actions
+    if not self.validation_protocol["action"].notnull().all():
+      raise MissingAction(
+        f'Not all rows in {config.VALIDATION_PROTOCOL.name} have a action',
       )
 
-    # Check if all rules are correct
-    user_rules = set(self.id_corrections["rule"].unique())
-    if not user_rules.issubset(config.rules):
-      raise WrongRule(
-        f'Wrong rule applied, check documentation for all rules. '
-        f'Rule error: {user_rules - config.rules}'
+    # Check if all actions are correct
+    user_actions = set(self.validation_protocol["action"].unique())
+    if not user_actions.issubset(config.actions):
+      raise WrongAction(
+        f'Wrong action applied, check documentation for all actions. '
+        f'Action error: {user_actions - config.actions}'
       )
 
-    # Check that all rules that requiers an argument has one
-    arguments = self.id_corrections.loc[
-      (self.id_corrections["rule"] == config.Rule.REASSIGN_ID.value) ,
+    # Check that all actions that requiers an argument has one
+    arguments = self.validation_protocol.loc[
+      (self.validation_protocol["action"] == config.Action.REASSIGN_ID.value) ,
       "argument"
     ]
     if  arguments.isna().any():
-      raise MissingAction(
-        f'Missing action for reassign_id, check {config.ID_CORRECTIONS.name}'
+      raise MissingArgument(
+        f'Missing argument for reassign_id, check {config.VALIDATION_PROTOCOL.name}'
       )
 
   def repair_json_data(self, incomplete_json: bytes, pos: int) -> str:
@@ -490,8 +499,8 @@ class Validator():
 
     return df
 
-  def _new_filename(self, rid: int, pid: int, rule: str, filename: str) -> str:
-    new_pid = str(int(self._get_argument(rid, pid, rule)))
+  def _new_filename(self, rid: int, pid: int, action: str, filename: str) -> str:
+    new_pid = str(int(self._get_argument(rid, pid, action)))
     match = utils.regex(filename, config.REGEX_SUB, group=None)
     start = filename[:match.start()]
     end   = filename[match.end():]
@@ -521,7 +530,7 @@ class Validator():
       self.load_result_index(project_dir / config.RESULT_INDEX)
       try:
         self.validate_pids(project_dir)
-        self.validate_id_corrections(project_dir)
+        self.validate_validation_protocol(project_dir)
 
       except ValidationError as e:
         self.log.info('Skipping %s: %s', project_dir.name, e)
@@ -535,9 +544,9 @@ class Validator():
         rid = int(utils.regex(file.name, config.REGEX_RESULT_RID, group=1))
         sub = utils.regex(file.name, config.REGEX_SUB, group=1)
 
-        rule = self._get_rule(rid, sub)
+        action = self._get_action(rid, sub)
 
-        if rule == config.Rule.EXCLUDE:
+        if action == config.Action.EXCLUDE:
           self.log.debug('Excluding %s', file.name)
           continue
 
@@ -559,8 +568,8 @@ class Validator():
         df = self.populate_df(df, mapping, data)
         filename = file.name.replace('.txt.gz', '.tsv')
 
-        if rule == config.Rule.REASSIGN_ID:
-          filename = self._new_filename(rid, sub, rule, filename)
+        if action == config.Action.REASSIGN_ID:
+          filename = self._new_filename(rid, sub, action, filename)
 
         filepath = path / filename
         self.log.info('Saving validated data to %s', filepath.name)

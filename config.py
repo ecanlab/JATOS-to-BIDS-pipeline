@@ -3,14 +3,14 @@ from enum import Enum
 from pathlib import Path
 
 # Paths
-JATOS_FOLDER   = Path('sourcedata/JATOS')
-RAW_DATA       = Path('sourcedata/JATOS/raw_data/')
-RESULT_INDEX   = Path(RAW_DATA / 'result_index.tsv')
-PROJECT_CONFIG = Path('code/JATOS/project_config.json')
-VALIDATED_DATA = Path('sourcedata/JATOS/validated_data')
-ID_CORRECTIONS = Path(VALIDATED_DATA / 'id_corrections.tsv')
-DOWNLOAD_LOG   = Path('code/JATOS/logs/download.log')
-VALIDATE_LOG   = Path('code/JATOS/logs/validate.log')
+JATOS_FOLDER        = Path('sourcedata/JATOS')
+RAW_DATA            = Path('sourcedata/JATOS/raw_data/')
+RESULT_INDEX        = Path(RAW_DATA / 'result_index.tsv')
+PROJECT_CONFIG      = Path('code/JATOS/project_config.json')
+VALIDATED_DATA      = Path('sourcedata/JATOS/validated_data')
+VALIDATION_PROTOCOL = Path(VALIDATED_DATA / 'validation_protocol.tsv')
+DOWNLOAD_LOG        = Path('code/JATOS/logs/download.log')
+VALIDATE_LOG        = Path('code/JATOS/logs/validate.log')
 
 # Download states
 DOWNLOADED = 'downloaded'
@@ -41,10 +41,10 @@ LOCAL_TZ = datetime.datetime.now().astimezone().tzinfo
 # ID keys
 ID_KEYS = ['pid', 'PID', 'id', 'ID']
 
-# ID correction rules
-class Rule(Enum):
+# ID correction actions
+class Action(Enum):
   KEEP = 'keep'
   REASSIGN_ID = 'reassign_id'
   EXCLUDE = 'exclude'
 
-rules = {rule.value for rule in Rule}
+actions = {action.value for action in Action}
