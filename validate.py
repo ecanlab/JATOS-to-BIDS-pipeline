@@ -44,11 +44,13 @@ class NewIdCorrectionsFile(ValidationError):
   pass
 
 class MissingAction(ValidationError):
-  """Raised when a action is missing for a line in the validation_protocol.tsv."""
+  """Raised when a action is missing for a line in the validation_protocol.tsv.
+  """
   pass
 
 class MissingArgument(ValidationError):
-  """Raised when an Argument is missing for a action in validation_protocol.tsv."""
+  """Raised when an Argument is missing for a action in validation_protocol.tsv.
+  """
   pass
 
 class WrongAction(ValidationError):
@@ -147,7 +149,82 @@ class Validator():
       config.RESULT_INDEX.name,
       self.current_project_title
     )
-    self.result_index = pd.read_csv(path, sep='\t')
+    result_index = pd.read_csv(path, sep='\t', dtype={'participant_id': 'string'})
+    result_index = result_index.convert_dtypes()
+    self.result_index = result_index.reset_index(drop=True)
+
+  def make_validation_protocol(self, project_dir: Path):
+    """Creates a validation protocol that is a copy of result index with the
+    additonal columns 'action' and 'argument'. In theshe column the user will
+    specify what will happen to each result.
+
+    Args:
+      project_dir: The project folder.
+    """
+
+    path = project_dir / config.VALIDATION_PROTOCOL
+
+    if path.is_file():
+      # If there already exist a validation protocol compare it to result index
+      # and update it if there are new rows in result index.
+      self.log.info('Found %s', config.VALIDATION_PROTOCOL.name)
+      self.validation_protocol = pd.read_csv(
+        path, sep='\t', dtype={'participant_id':'string'}
+      )
+
+      # Sort both DataFrames by 'start_date' and 'result_id'
+      self.validation_protocol.sort_values(
+        by=['start_date', 'result_id'],
+        ignore_index=True, inplace=True
+      )
+      self.result_index.sort_values(
+        by=['start_date', 'result_id'],
+        ignore_index=True, inplace=True
+      )
+
+      protocol_compare = self.validation_protocol.drop(['action','argument'],axis=1)
+
+      left = self.result_index.merge(
+          self.validation_protocol,
+          how='left',
+          indicator=True
+        )
+      new_rows = left[(left._merge=='left_only')].drop('_merge', axis=1)
+
+      if new_rows.empty:
+        self.log.info('%s is Up-To-Date', config.VALIDATION_PROTOCOL.name)
+        return
+
+      else:
+        self.log.info(
+          'Adding %d new row(s) to %s',
+          len(new_rows),
+          config.VALIDATION_PROTOCOL.name
+        )
+
+        new_rows['action'] = pd.NA
+        new_rows['argument'] = pd.NA
+
+        combined_pd = pd.concat([self.validation_protocol, new_rows])
+        combined_pd.to_csv(path, sep='\t' , index=False)
+        return
+
+    else:
+      self.result_index[[
+        'id_not_in_project',
+        'duplicate_id',
+        'action',
+        'argument']] = None
+      self.result_index.to_csv(path, sep='\t', index=False)
+
+      self.log.info(
+        'Created %s, in %s validated data, please fill in an action for each '
+        'row. Read the documentation for information about the different '
+        'actions',
+        path.name,
+        self.current_project_title
+      )
+      raise NewIdCorrectionsFile("New validation_protocol.tsv was created")
 
   def find_id_not_in_project(self) -> bool:
     """Updateda the result index with a new coulumn.
@@ -171,13 +248,13 @@ class Validator():
         config.PROJECT_CONFIG.name,
         config.PROJECT_CONFIG.name
       )
-      self.result_index["not_in_project_id"] = False
+      self.validation_protocol["id_not_in_project"] = False
       return False
 
-    self.result_index["not_in_project_id"] = \
-      ~self.result_index["participant_id"].isin(project_ids)
+    self.validation_protocol["id_not_in_project"] = \
+      ~self.validation_protocol["participant_id"].isin(project_ids)
 
-    if self.result_index["not_in_project_id"].any():
+    if self.validation_protocol["id_not_in_project"].any():
       self.log.warning(
         'Found participant ID that is not part of the project, check %s',
         config.VALIDATION_PROTOCOL.name
@@ -195,7 +272,7 @@ class Validator():
     """
     self.log.info('Checking for duplicate participant IDs')
 
-    duplicates = self.result_index.duplicated(
+    duplicates = self.validation_protocol.duplicated(
       keep=False,
       subset=['study_title','participant_id']
     )
@@ -203,25 +280,9 @@ class Validator():
     self.result_index["duplicate_id"] = duplicates
 
     if duplicates.any():
-
       return True
+
     return False
-
-  def _filter_result_index(self):
-    cond = self.result_index[["not_in_project_id", "duplicate_id"]].any(axis=1)
-    self.result_index = self.result_index[cond]
-    self.result_index = self.result_index.convert_dtypes()
-    self.result_index = self.result_index.reset_index(drop=True)
-
-  def validate_pids2(self, project_dir: Path):
-    """Validate participant IDs by checking for duplicates and comparing all IDs
-    to the project participant IDs.
-
-    Args:
-      project_dir: The project folder.
-    """
-    found_id_not_in_project = self.find_id_not_in_project()
-    found_pid_duplicates = self.find_pid_duplicates()
 
   def validate_pids(self, project_dir: Path):
     """Validate participant IDs by checking for duplicates and comparing all IDs
@@ -233,53 +294,7 @@ class Validator():
     found_id_not_in_project = self.find_id_not_in_project()
     found_pid_duplicates = self.find_pid_duplicates()
 
-    path = project_dir / config.VALIDATION_PROTOCOL
-
-    if path.is_file():
-      self.log.info(
-        'Found %s',
-        config.VALIDATION_PROTOCOL.name
-      )
-      validation_protocol = pd.read_csv(
-        path, sep='\t', dtype={'participant_id':'string'}
-      )
-      validation_protocol = validation_protocol.convert_dtypes()
-
-      # Make a copy of the column 'action' and 'argument' then remove it so it is
-      # possible to compare if the two DataFrames are equal.
-      validation_protocol_action = validation_protocol[['action','argument']].copy()
-      validation_protocol.drop(['action','argument'],axis=1, inplace=True)
-
-      if not self.result_index.equals(validation_protocol):
-        if found_id_not_in_project:
-          self.log.warning(
-            'Found participant ID that is not part of the project, check %s',
-            config.VALIDATION_PROTOCOL.name
-          )
-
-        if found_pid_duplicates:
-          self.log.warning(
-            'Found duplicate participant ID, check %s',
-            config.VALIDATION_PROTOCOL.name
-          )
-
-        self.log.info(
-          'Updating %s',
-          config.VALIDATION_PROTOCOL.name
-        )
-        combined_pd = pd.concat([validation_protocol, self.result_index])
-        combined_pd.drop_duplicates(inplace=True)
-        combined_pd[['action','argument']] = validation_protocol_action
-
-        combined_pd.to_csv(path, sep='\t' , index=False)
-
-      else:
-        self.log.info(
-          '%s is Up-To-Date',
-          config.VALIDATION_PROTOCOL.name
-        )
-
-    elif found_id_not_in_project or found_pid_duplicates:
+    if found_id_not_in_project or found_pid_duplicates:
       if found_id_not_in_project:
         self.log.warning(
           'Found participant ID that is not part of the project, check %s',
@@ -294,15 +309,6 @@ class Validator():
 
       self.result_index[['action','argument']] = None
       self.result_index.to_csv(path, sep='\t', index=False)
-
-      self.log.info(
-        'Created %s, in %s validated data, please fill in an action for each '
-        'row. Read the documentation for information about the different '
-        'actions',
-        path.name,
-        self.current_project_title
-      )
-      raise NewIdCorrectionsFile("New validation_protocol.tsv was created")
 
     else:
       self.log.info(
@@ -339,13 +345,7 @@ class Validator():
     """Check that all entries in validation_protocol have a correct action and
       argument.
     """
-    path = project_dir / config.VALIDATION_PROTOCOL
-
-    if not path.is_file():
-      return
-
     self.log.info('Validating %s', config.VALIDATION_PROTOCOL.name)
-    self.validation_protocol = pd.read_csv(path, sep='\t')
 
     # Check if there are missing actions
     if not self.validation_protocol["action"].notnull().all():
@@ -368,7 +368,8 @@ class Validator():
     ]
     if  arguments.isna().any():
       raise MissingArgument(
-        f'Missing argument for reassign_id, check {config.VALIDATION_PROTOCOL.name}'
+        'Missing argument for reassign_id, check'
+        f'{config.VALIDATION_PROTOCOL.name}'
       )
 
   def repair_json_data(self, incomplete_json: bytes, pos: int) -> str:
@@ -508,7 +509,6 @@ class Validator():
 
     return filename
 
-
   def run(self):
     project_config = self.load_project_config()
     self.project_config = self.validate_project_config(project_config)
@@ -528,8 +528,9 @@ class Validator():
       path.mkdir(True, exist_ok=True)
 
       self.load_result_index(project_dir / config.RESULT_INDEX)
+
       try:
-        self.validate_pids(project_dir)
+        self.make_validation_protocol(project_dir)
         self.validate_validation_protocol(project_dir)
 
       except ValidationError as e:
