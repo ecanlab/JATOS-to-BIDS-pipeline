@@ -6,6 +6,7 @@ import utils
 import config
 import logging
 import pandas as pd
+from tqdm import tqdm
 import log as log_util
 from typing import Any
 from pathlib import Path
@@ -193,6 +194,7 @@ class Validator():
 
       if new_rows.empty:
         self.log.info('%s is Up-To-Date', config.VALIDATION_PROTOCOL.name)
+        self.validate_pids()
         return
 
       else:
@@ -205,17 +207,22 @@ class Validator():
         new_rows['action'] = pd.NA
         new_rows['argument'] = pd.NA
 
-        combined_pd = pd.concat([self.validation_protocol, new_rows])
-        combined_pd.to_csv(path, sep='\t' , index=False)
+        self.validation_protocol = pd.concat([self.validation_protocol, new_rows])
+        self.validate_pids()
+        self.validation_protocol.to_csv(path, sep='\t' , index=False)
         return
 
     else:
-      self.result_index[[
+      self.validation_protocol = self.result_index
+      self.validation_protocol[[
         'id_not_in_project',
         'duplicate_id',
         'action',
         'argument']] = None
-      self.result_index.to_csv(path, sep='\t', index=False)
+
+      self.validate_pids()
+
+      self.validation_protocol.to_csv(path, sep='\t', index=False)
 
       self.log.info(
         'Created %s, in %s validated data, please fill in an action for each '
@@ -227,48 +234,53 @@ class Validator():
       raise NewIdCorrectionsFile("New validation_protocol.tsv was created")
 
   def find_id_not_in_project(self) -> bool:
-    """Updateda the result index with a new coulumn.
+    """Updatedas validation protocol with information if the participant ID is
+    part of the project or not.
 
     If a participant ID is not part of the project mark that row as True in the
     new column. The project IDs are specified in project_config.json.
-
-    Returns:
-      A boolean value, True if there are IDs that are not part the of the
-      project, othervise False.
     """
     self.log.info('Checking if all participant IDs are part of the project')
     try:
       project = self.project_config.project.get(self.current_project_title)
       project_ids = project.get(ids)
     except Exception:
-      self.log.info(
+      self.log.error(
         'Did not find IDs for %s in %s, update %s if you want the script to '
         'automatically check if all IDs are part of the project',
         self.current_project_title,
         config.PROJECT_CONFIG.name,
         config.PROJECT_CONFIG.name
       )
-      self.validation_protocol["id_not_in_project"] = False
-      return False
+      self.validation_protocol['id_not_in_project'] = False
+      return
 
-    self.validation_protocol["id_not_in_project"] = \
-      ~self.validation_protocol["participant_id"].isin(project_ids)
+    # Check if all values in 'id_not_in_project' are 'None'
+    if self.calidation_protocol['id_not_in_project'].isnull().values().all():
+      self.validation_protocol['id_not_in_project'] = \
+        ~self.validation_protocol['id_not_in_project'].isin(project_ids)
 
-    if self.validation_protocol["id_not_in_project"].any():
-      self.log.warning(
-        'Found participant ID that is not part of the project, check %s',
-        config.VALIDATION_PROTOCOL.name
-      )
-      return True
-    return False
+      if self.validation_protocol['id_not_in_project'].any():
+        self.log.warning('Found participant ID that is not part of the project')
+        return
+
+    # Check if any value in 'id_not_in_project' are 'None'
+    if self.validation_protocol['id_not_in_project'].isnull().values.any():
+      if duplicates.any():
+        self.log.info(
+          'New participant ID that is not part of the project found'
+        )
+        self.validation_protocol['id_not_in_project'] = duplicates
+        return
+      else:
+        self.log.info('No new duplicate IDs found')
+        return
+
+    return
 
   def find_pid_duplicates(self) -> bool:
     """Find all participants IDs that are on multiple rows with the same study
        title.
-
-    Returns:
-      A boolean value, True if there are multiple rows with the same study
-       title, othervise False.
     """
     self.log.info('Checking for duplicate participant IDs')
 
@@ -277,44 +289,42 @@ class Validator():
       subset=['study_title','participant_id']
     )
 
-    self.result_index["duplicate_id"] = duplicates
+    # Check if all values in 'duplicate_id' are 'None'
+    if self.validation_protocol['duplicate_id'].isnull().values.all():
+      if duplicates.any():
+        self.log.info('Duplicate IDs found')
+        self.validation_protocol['duplicate_id'] = duplicates
+        return
+      else:
+        self.log.info('No duplicate IDs found')
+        return
 
-    if duplicates.any():
-      return True
+    # Check if any value in 'duplicate_id' are 'None'
+    if self.validation_protocol['duplicate_id'].isnull().values.any():
+      new_rows = self.validation_protocol['duplicate_id'].isnull().values.sum()
+      if duplicates[:-new_rows].any():
+        self.log.info('New duplicate IDs found')
+        self.validation_protocol['duplicate_id'] = duplicates
+        return
+      else:
+        self.log.info('No new duplicate IDs found')
+        return
 
-    return False
-
-  def validate_pids(self, project_dir: Path):
-    """Validate participant IDs by checking for duplicates and comparing all IDs
-    to the project participant IDs.
-
-    Args:
-      project_dir: The project folder.
-    """
-    found_id_not_in_project = self.find_id_not_in_project()
-    found_pid_duplicates = self.find_pid_duplicates()
-
-    if found_id_not_in_project or found_pid_duplicates:
-      if found_id_not_in_project:
-        self.log.warning(
-          'Found participant ID that is not part of the project, check %s',
-          config.VALIDATION_PROTOCOL.name
-        )
-
-      if found_pid_duplicates:
-        self.log.warning(
-          'Found duplicate participant ID, check %s',
-          config.VALIDATION_PROTOCOL.name
-        )
-
-      self.result_index[['action','argument']] = None
-      self.result_index.to_csv(path, sep='\t', index=False)
+    # Check if duplicates and 'duplicate_id' are equal
+    if self.validation_protocol['duplicate_id'].equals(duplicates):
+      return
 
     else:
-      self.log.info(
-        'No duplicate IDs or IDs not in project found in %s',
-        self.current_project_title
-      )
+      self.validation_protocol['duplicate_id'] = duplicates
+      self.log.info('Correcting "duplicate_id" column')
+
+  def validate_pids(self):
+    """Validate participant IDs by checking for duplicates and comparing all IDs
+    to the project participant IDs.
+    """
+    self.log.info('Validating IDs')
+    found_id_not_in_project = self.find_id_not_in_project()
+    found_pid_duplicates = self.find_pid_duplicates()
 
   def _get_action(self, rid: int, pid: int) -> config.Action:
     row = self.validation_protocol.loc[
@@ -405,7 +415,7 @@ class Validator():
       Participant raw data as dict.
     """
     try:
-      self.log.info('Loading participant raw data data from %s', path.name)
+      self.log.debug('Loading participant raw data data from %s', path.name)
       with gzip.open(path, 'r') as content:
         data = content.read()
         if len(data) == 1:
@@ -418,7 +428,7 @@ class Validator():
       raise BadZipFile(f'Failed to open zipfile: {e}')
 
     except json.JSONDecodeError as e:
-      self.log.error('JSON decode error in file: %s: %s', path.name, e)
+      self.log.debug('JSON decode error in file: %s: %s', path.name, e)
 
       try:
         json_content = self.repair_json_data(data, 2)
@@ -428,7 +438,7 @@ class Validator():
       except json.JSONDecodeError as e:
         try:
           json_content = self.repair_json_data(data, 1)
-          self.log.info('Error was fixed for file: %s', path.name)
+          self.log.debug('Error was fixed for file: %s', path.name)
           return json_content
 
         except json.JSONDecodeError as e:
@@ -474,6 +484,7 @@ class Validator():
       self.log.error('Could not find mapping for %s, make sure to fill out '
       'the project_config.json. %s'
       , task_info.title, e)
+      self.log.info('Looking trough the rest of the files for other versions')
 
   def populate_df(
       self,
@@ -541,7 +552,8 @@ class Validator():
 
       path_raw_data = project_dir / config.RAW_DATA
 
-      for file in path_raw_data.glob('*.gz'):
+      files = list(path_raw_data.glob('*.gz'))
+      for file in tqdm(files, total=len(files)):
         rid = int(utils.regex(file.name, config.REGEX_RESULT_RID, group=1))
         sub = utils.regex(file.name, config.REGEX_SUB, group=1)
 
@@ -554,7 +566,7 @@ class Validator():
         try:
           data = self.load_participant_raw_data(file)
         except FileError as e:
-          self.log.error(f'Error loading file: {e}')
+          self.log.debug(f'Error loading file: {e}')
 
         task_info = self.get_task_info(data)
 
@@ -573,7 +585,7 @@ class Validator():
           filename = self._new_filename(rid, sub, action, filename)
 
         filepath = path / filename
-        self.log.info('Saving validated data to %s', filepath.name)
+        self.log.debug('Saving validated data to %s', filepath.name)
         df.to_csv(filepath, sep='\t', index=False)
 
     self.log.info('Validation completed')
