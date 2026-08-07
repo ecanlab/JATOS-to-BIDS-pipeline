@@ -1,5 +1,6 @@
 import os
 import io
+import sys
 import gzip
 import utils
 import logging
@@ -80,9 +81,7 @@ class JatosDownloader:
 
     except requests.exceptions.RequestException as e:
       self.log.critical('Failed to fetch from URL: %s: %s', url, e)
-      raise requests.exceptions.RequestException(
-        f'Could not fetch from URL: %s, %s', url, e
-      )
+      sys.exit(1)
 
   def get_studies_info(self) -> list[StudyInfo]:
     """Fetches study ids, uuid and title from all studies on the JATOS server.
@@ -432,7 +431,13 @@ class JatosDownloader:
 
     pending_rows = df[df['download_status'] != config.DOWNLOADED]
 
-    for index, row in pending_rows.iterrows():
+    pbar = tqdm(
+      pendig_rows.iterrows(),
+      total=len(pending_rows),
+      desc=f'Downloading {self.current_project_title}: '
+    )
+
+    for index, row in pbar:
       try:
         self._process_and_save_result(
           result_id=row['result_id'],
