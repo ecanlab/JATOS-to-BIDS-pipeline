@@ -553,7 +553,13 @@ class Validator():
       path_raw_data = project_dir / config.RAW_DATA
 
       files = list(path_raw_data.glob('*.gz'))
-      for file in tqdm(files, total=len(files)):
+      pbar = tqdm(
+        files,
+        total=len(files),
+        desc=f'Processing {project_dir.name}: '
+      )
+
+      for file in pbar:
         rid = int(utils.regex(file.name, config.REGEX_RESULT_RID, group=1))
         sub = utils.regex(file.name, config.REGEX_SUB, group=1)
 
