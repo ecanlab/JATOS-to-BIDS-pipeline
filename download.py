@@ -9,6 +9,7 @@ import zipfile
 import datetime
 import requests
 import pandas as pd
+from tqdm import tqdm
 import log as log_util
 from pathlib import Path
 from dotenv import load_dotenv
@@ -138,7 +139,7 @@ class JatosDownloader:
       into JSON
     """
     url = f'{self.base_url}results/metadata'
-    self.log.info(
+    self.log.debug(
       'Fetching study metadata for %s ID %s',
       self.current_study_title,
       study_id
@@ -155,7 +156,7 @@ class JatosDownloader:
       raise
 
     except IndexError:
-      self.log.info(
+      self.log.debug(
         'Study %s ID %s have no results',
         self.current_study_title,
         study_id
@@ -199,7 +200,7 @@ class JatosDownloader:
     self.current_result_id = metadata.get('id')
     data.append(self.current_result_id)
 
-    self.log.info(
+    self.log.debug(
       'Extracting result ID %s metadata values from study %s',
       self.current_result_id, self.current_study_title
     )
@@ -241,7 +242,7 @@ class JatosDownloader:
       io.BytesIO.
     """
     url = f'{self.base_url}results/data'
-    self.log.info('Fetching result data for result id %s', result_id)
+    self.log.debug('Fetching result data for result id %s', result_id)
     response = self._fetch(url, {'studyResultId': result_id})
     bytes_data = io.BytesIO(response.content)
 
@@ -261,7 +262,7 @@ class JatosDownloader:
     Side effects:
       Writes a .gz file to disk.
     """
-    self.log.info(
+    self.log.debug(
       'Saving rawdata %s to project %s',
       savepath.name, self.current_project_title
     )
@@ -277,7 +278,7 @@ class JatosDownloader:
         f.write(data)
 
     except FileExistsError:
-      self.log.info(
+      self.log.debug(
         'File %s exists, trying alternate names...',
         savepath.name
       )
@@ -291,7 +292,7 @@ class JatosDownloader:
           with gzip.open(new_savepath, 'x', newline=None) as f:
             f.write(data)
 
-          self.log.info('Saved as %s instead', new_savepath.name)
+          self.log.debug('Saved as %s instead', new_savepath.name)
           break
 
         except FileExistsError:
@@ -308,7 +309,7 @@ class JatosDownloader:
       raise
 
     except IndexError:
-      self.log.info(
+      self.log.debug(
         'No result found for %s', savepath.name
       )
 
@@ -327,7 +328,7 @@ class JatosDownloader:
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_file():
-      self.log.info(
+      self.log.debug(
         'Found %s for project %s',
         config.RESULT_INDEX,
         self.current_project_title
@@ -335,7 +336,7 @@ class JatosDownloader:
       df = pd.read_csv(path, sep='\t')
       return df
 
-    self.log.info(
+    self.log.debug(
       'Did not find %s for project %s, creating one',
       config.RESULT_INDEX,
       self.current_project_title
@@ -431,8 +432,11 @@ class JatosDownloader:
 
     pending_rows = df[df['download_status'] != config.DOWNLOADED]
 
+    if  pending_rows.empty:
+      return
+
     pbar = tqdm(
-      pendig_rows.iterrows(),
+      pending_rows.iterrows(),
       total=len(pending_rows),
       desc=f'Downloading {self.current_project_title}: '
     )
@@ -463,7 +467,12 @@ class JatosDownloader:
     try:
       # Get project metadata and create result index
       studies = self.get_studies_info()
-      for study in studies:
+      pbar = tqdm(
+        studies,
+        total=len(studies),
+        desc=f'Processing studies: '
+      )
+      for study in pbar:
         try:
           self.process_study(study)
         except IndexError:
