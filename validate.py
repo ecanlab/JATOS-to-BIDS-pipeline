@@ -362,8 +362,7 @@ class Validator():
 
   def _get_action(self, rid: int, pid: int) -> config.Action:
     row = self.validation_protocol.loc[
-      (self.validation_protocol["result_id"] == rid) &
-      (self.validation_protocol["participant_id"] == pid),
+      (self.validation_protocol["result_id"] == rid),
       "action"
     ]
 
