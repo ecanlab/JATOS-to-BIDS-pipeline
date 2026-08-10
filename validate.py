@@ -179,7 +179,11 @@ class Validator():
       config.RESULT_INDEX.name,
       self.current_project_title
     )
-    result_index = pd.read_csv(path, sep='\t', dtype={'participant_id': 'string'})
+    result_index = pd.read_csv(
+      path,
+      sep='\t',
+      dtype={'participant_id': 'string'}
+    )
     result_index = result_index.convert_dtypes()
     self.result_index = result_index.reset_index(drop=True)
 
@@ -212,11 +216,10 @@ class Validator():
         ignore_index=True, inplace=True
       )
 
-      protocol_compare = self.validation_protocol.drop(['action','argument'],axis=1)
-
       left = self.result_index.merge(
           self.validation_protocol,
           how='left',
+          on='result_uuid',
           indicator=True
         )
       new_rows = left[(left._merge=='left_only')].drop('_merge', axis=1)
@@ -236,7 +239,9 @@ class Validator():
         new_rows['action'] = pd.NA
         new_rows['argument'] = pd.NA
 
-        self.validation_protocol = pd.concat([self.validation_protocol, new_rows])
+        self.validation_protocol = pd.concat(
+          [self.validation_protocol, new_rows]
+        )
         self.validate_pids()
         self.validation_protocol.to_csv(path, sep='\t' , index=False)
         return
