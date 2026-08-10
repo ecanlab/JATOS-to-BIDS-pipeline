@@ -5,6 +5,7 @@ import json
 import utils
 import config
 import logging
+import argparse
 import pandas as pd
 from tqdm import tqdm
 import log as log_util
@@ -35,6 +36,28 @@ class TaskInfo:
   title: str
   name: str
   version: str
+
+def getArgs() -> argparse.Namespace:
+    """
+    Parses the command-line arguments.
+    Returns: argparse.Namespace: Command-line arguments inputs as an
+      argparse.Namespace object.
+    """
+    parser = argparse.ArgumentParser(
+      prog='validate',
+      description='Validate data from JATOS downloaded by the download script'
+    )
+
+    parser.add_argument(
+      '-s',
+      '--studies',
+      nargs='*',
+      help='one or more studies to validate'
+    )
+
+    args = parser.parse_args()
+
+    return args
 
 class ValidationError(Exception):
   """Base class for validation errors."""
@@ -73,8 +96,14 @@ class NoDataInFile(FileError):
   """Raised when there is only one symbol in data."""
 
 class Validator():
-  def __init__ (self, project_root: str, log: logging.Logger):
+  def __init__ (
+      self,
+      project_root: str,
+      args: argparse.Namespace,
+      log: logging.Logger
+  ):
     self.project_root = Path(project_root)
+    self.args = args
     self.log = log
     self.result_index: pd.DataFrame
     self.validation_protocol: pd.DataFrame
@@ -126,7 +155,7 @@ class Validator():
     """Check if the validated data directory is empty and inform the user."""
     if len(list(validated_data_dir.iterdir())) > 1:
       self.log.info(
-        '%s is not emty, clear the directory for a clean run',
+        '%s is not empty, clear the directory for a clean run',
         validated_data_dir.name
       )
 
@@ -432,7 +461,7 @@ class Validator():
 
       try:
         json_content = self.repair_json_data(data, 2)
-        self.log.info('Error was fixed for file: %s', path.name)
+        self.log.debug('Error was fixed for file: %s', path.name)
         return json_content
 
       except json.JSONDecodeError as e:
@@ -451,17 +480,21 @@ class Validator():
   def get_task_title(self, data: str) -> str:
     task_title: str
 
-    # Opensesame structure
-    if isinstance(data, dict):
-      task_title = data["data"][0]["title"]
+    try:
+      # Opensesame structure
+      if isinstance(data, dict):
+        task_title = data["data"][0]["title"]
 
-    # jsPsych
-    if isinstance(data, list):
+      # jsPsych
+      if isinstance(data, list):
         task_title = None
         for trial in data:
-            task_title = trial.get("title")
-            if task_title:
-                break
+          task_title = trial.get("test_version")
+          if task_title:
+            break
+
+    except IndexError as e:
+      raise NoDataInFile(f'No data found: {e}')
 
     return task_title
 
@@ -474,7 +507,7 @@ class Validator():
 
   def get_mapping(self, task_info: TaskInfo) -> dict:
     try:
-      self.log.info('Loading mapping for %s', task_info.title)
+      self.log.debug('Loading mapping for %s', task_info.title)
       task = self.project_config.task[task_info.name]
       version = task.version[task_info.version]
       return version.mapping
@@ -495,7 +528,7 @@ class Validator():
 
     # Opensesame structure
     if isinstance(data, dict):
-      self.log.info(
+      self.log.debug(
         'Found Opensesame structure in the raw data, collecting variables'
       )
       for trial in data['data']:
@@ -503,7 +536,7 @@ class Validator():
 
     # jsPsych structure
     if isinstance(data, list):
-      self.log.info(
+      self.log.debug(
         'Found jsPsych structure in the raw data, collecting variables'
       )
       for trial in data:
@@ -532,6 +565,9 @@ class Validator():
       sys.exit(1)
 
     for project_dir in project_dirs:
+      # Skip project if is not specified by the user
+      if args.studies and project_dir.name not in self.args.studies:
+        continue
       self.log.info('-- %s --', project_dir.name)
 
       self.current_project_title = project_dir.name
@@ -560,6 +596,7 @@ class Validator():
       )
 
       for file in pbar:
+        pbar.set_postfix(file=file.name)
         rid = int(utils.regex(file.name, config.REGEX_RESULT_RID, group=1))
         sub = utils.regex(file.name, config.REGEX_SUB, group=1)
 
@@ -573,8 +610,13 @@ class Validator():
           data = self.load_participant_raw_data(file)
         except FileError as e:
           self.log.debug(f'Error loading file: {e}')
+          continue
 
-        task_info = self.get_task_info(data)
+        try:
+          task_info = self.get_task_info(data)
+        except FileError as e:
+          self.log.debug(f'Error loading file {file.name}: {e}')
+          continue
 
         if task_info.title in self.tasks_with_no_mapping:
           continue
@@ -597,6 +639,8 @@ class Validator():
     self.log.info('Validation completed')
 
 if __name__ == "__main__":
+  args = getArgs()
+
   load_dotenv()
   project_root = os.getenv('PROJECT_ROOT')
 
@@ -607,5 +651,5 @@ if __name__ == "__main__":
   log = log_util.setupLogging(project_root / config.VALIDATE_LOG)
   log.info('Configuration loaded successfully')
 
-  validator = Validator(project_root, log)
+  validator = Validator(project_root, args, log)
   validator.run()
