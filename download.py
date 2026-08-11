@@ -3,10 +3,11 @@ import io
 import sys
 import gzip
 import utils
-import logging
 import config
 import zipfile
+import logging
 import datetime
+import argparse
 import requests
 import pandas as pd
 from tqdm import tqdm
@@ -22,18 +23,42 @@ class StudyInfo:
   uuid: str
   title: str
 
+def getArgs() -> argparse.Namespace:
+    """
+    Parses the command-line arguments.
+    Returns: argparse.Namespace: Command-line arguments inputs as an
+      argparse.Namespace object.
+    """
+    parser = argparse.ArgumentParser(
+      prog='download',
+      description='Download data from JATOS'
+    )
+
+    parser.add_argument(
+      '-s',
+      '--studies',
+      nargs='*',
+      help='one or more studies to download'
+    )
+
+    args = parser.parse_args()
+
+    return args
+
 class JatosDownloader:
   def __init__(
       self,
       base_url: str,
       api_token: str,
       project_root: str,
+      args: argparse.Namespace,
       log: logging.Logger
   ):
 
     self.base_url = base_url
     self.headers = {'Authorization': f'Bearer {api_token}'}
     self.project_root = Path(project_root)
+    self.args = args
     self.log = log
 
     self.session = requests.Session()
@@ -174,7 +199,7 @@ class JatosDownloader:
       pid = metadata.get('urlQueryParameters', {}).get(key, None)
       if pid is not None:
         return pid
-    self.log.error(
+    self.log.debug(
       'Could not find participant ID for study %s result ID %s',
       self.current_study_title,
       self.current_result_id
@@ -333,7 +358,7 @@ class JatosDownloader:
         config.RESULT_INDEX,
         self.current_project_title
       )
-      df = pd.read_csv(path, sep='\t')
+      df = pd.read_csv(path, dtype={"participant_id": "string"}, sep='\t')
       return df
 
     self.log.debug(
@@ -374,10 +399,9 @@ class JatosDownloader:
     self.current_study_id = study.id
     self.current_study_uuid = study.uuid
     self.current_study_title = study.title
-    project_title = utils.regex(study.title, config.REGEX_PROJECT_TITLE)
-    self.current_project_title = project_title
 
-    result_index_path = self.project_root / project_title / config.RESULT_INDEX
+    project_root = self.project_root / self.current_project_title
+    result_index_path = project_root / config.RESULT_INDEX
     study_metadata = self.get_study_metadata(study.id)
     df = self.load_or_create_result_index(result_index_path)
     existing_uuids = set(df['result_uuid'])
@@ -394,6 +418,7 @@ class JatosDownloader:
   def _construct_result_filename(self, title: str, pid: str, rid: int) -> str:
     ses  = utils.regex(title, config.REGEX_PROJECT_SES)
     task = utils.regex(title, config.REGEX_PROJECT_TASK)
+
     filename = f'sub-{pid}_rid-{rid}_'
     if ses:
       filename += f'{ses}_'
@@ -426,7 +451,9 @@ class JatosDownloader:
     """
     self.current_project_title = directory.name
     result_index_path = directory / config.RESULT_INDEX
-    df = pd.read_csv(result_index_path, sep='\t')
+    df = pd.read_csv(
+      result_index_path, dtype={"participant_id": "string"}, sep='\t'
+    )
 
     raw_data_dir = self.project_root / directory / config.RAW_DATA
 
@@ -473,6 +500,12 @@ class JatosDownloader:
         desc=f'Processing studies: '
       )
       for study in pbar:
+        self.current_project_title = utils.regex(
+          study.title, config.REGEX_PROJECT_TITLE
+        )
+        # Skip project if is not specified by the user
+        if args.studies and self.current_project_title not in self.args.studies:
+          continue
         try:
           self.process_study(study)
         except IndexError:
@@ -483,6 +516,9 @@ class JatosDownloader:
       # Get result data and update result index
       project_dirs = utils.get_all_project_dirs(self.project_root)
       for project_dir in project_dirs:
+        # Skip project if is not specified by the user
+        if args.studies and project_dir.name not in self.args.studies:
+          continue
         try:
           self.download_results(project_dir)
         except Exception as e:
@@ -498,6 +534,8 @@ if __name__ == "__main__":
   api_token = os.getenv('API_TOKEN')
   project_root = os.getenv('PROJECT_ROOT')
 
+  args = getArgs()
+
   if not base_url or not api_token or not project_root:
     print('base_url, api_token and project_root must be set in .env file')
     exit()
@@ -505,5 +543,5 @@ if __name__ == "__main__":
   log = log_util.setupLogging(project_root / config.DOWNLOAD_LOG)
   log.info('Configuration loaded successfully')
 
-  downloader = JatosDownloader(base_url, api_token, project_root, log)
+  downloader = JatosDownloader(base_url, api_token, project_root, args, log)
   downloader.run()
