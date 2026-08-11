@@ -41,6 +41,9 @@ LOCAL_TZ = datetime.datetime.now().astimezone().tzinfo
 # ID keys
 ID_KEYS = ['pid', 'PID', 'id', 'ID']
 
+# Title keys
+TITLE_KEYS = ['test_version']
+
 # ID correction actions
 class Action(Enum):
   KEEP = 'keep'

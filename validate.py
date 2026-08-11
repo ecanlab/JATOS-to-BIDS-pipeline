@@ -37,28 +37,6 @@ class TaskInfo:
   name: str
   version: str
 
-def getArgs() -> argparse.Namespace:
-    """
-    Parses the command-line arguments.
-    Returns: argparse.Namespace: Command-line arguments inputs as an
-      argparse.Namespace object.
-    """
-    parser = argparse.ArgumentParser(
-      prog='validate',
-      description='Validate data from JATOS downloaded by the download script'
-    )
-
-    parser.add_argument(
-      '-s',
-      '--studies',
-      nargs='*',
-      help='one or more studies to validate'
-    )
-
-    args = parser.parse_args()
-
-    return args
-
 class ValidationError(Exception):
   """Base class for validation errors."""
   pass
@@ -94,6 +72,31 @@ class JSONDecodeError(FileError):
 
 class NoDataInFile(FileError):
   """Raised when there is only one symbol in data."""
+
+class NoTitleFound(Exception):
+  """Raised when no title could be found in data."""
+
+def getArgs() -> argparse.Namespace:
+    """
+    Parses the command-line arguments.
+    Returns: argparse.Namespace: Command-line arguments inputs as an
+      argparse.Namespace object.
+    """
+    parser = argparse.ArgumentParser(
+      prog='validate',
+      description='Validate data from JATOS downloaded by the download script'
+    )
+
+    parser.add_argument(
+      '-s',
+      '--studies',
+      nargs='*',
+      help='one or more studies to validate'
+    )
+
+    args = parser.parse_args()
+
+    return args
 
 class Validator():
   def __init__ (
@@ -482,25 +485,28 @@ class Validator():
     return None
 
   def get_task_title(self, data: str) -> str:
-    task_title: str
+    task_title: str | None = None
 
     try:
       # Opensesame structure
       if isinstance(data, dict):
         task_title = data["data"][0]["title"]
+        return task_title
 
       # jsPsych
       if isinstance(data, list):
-        task_title = None
+        # In jsPsych we don't know where the title is stored so we need to go
+        # trough all trials until we find the title
         for trial in data:
-          task_title = trial.get("test_version")
-          if task_title:
-            break
+          # The title key is user defined
+          for title in config.TITLE_KEYS:
+            task_title = trial.get(title)
+            if task_title is not None:
+              return task_title
+        raise NoTitleFound('No title found')
 
     except IndexError as e:
       raise NoDataInFile(f'No data found: {e}')
-
-    return task_title
 
   def get_task_info(self, data: str) -> TaskInfo:
     title = self.get_task_title(data)
@@ -621,6 +627,11 @@ class Validator():
         except FileError as e:
           self.log.debug(f'Error loading file {file.name}: {e}')
           continue
+        except NoTitleFound:
+          self.log.critical(
+            'Could not find title in %s data add title key in config',
+            file.name
+          )
 
         if task_info.title in self.tasks_with_no_mapping:
           continue
