@@ -1,75 +1,100 @@
-import os
-import io
-import sys
-import gzip
-import utils
-import config
-import zipfile
-import logging
-import datetime
+"""Download and process data from JATOS."""
+
+# Standard library
 import argparse
-import requests
-import pandas as pd
-from tqdm import tqdm
-import log as log_util
-from pathlib import Path
-from dotenv import load_dotenv
-from typing import Any, NoReturn
+import datetime
+import gzip
+import io
+import logging
+import os
+import sys
+import zipfile
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+# Third-party
+import pandas as pd
+import requests
+from dotenv import load_dotenv
+from tqdm import tqdm
+
+# Local
+import config
+import log as log_util
+import utils
 
 @dataclass
 class StudyInfo:
-  id: int
+  """Holds basic information about a study."""
+  participant_id: int
   uuid: str
   title: str
 
-def getArgs() -> argparse.Namespace:
-    """
-    Parses the command-line arguments.
+@dataclass
+class AppConfig:
+  """Holds Basic settings for the server and project."""
+  base_url: str
+  api_token: str
+  project_root: Path
+
+@dataclass
+class StudyState:
+  """Holds the current study's state."""
+  study_id:      int | None = None
+  study_uuid:    str | None = None
+  result_id:     str | None = None
+  study_title:   str | None = None
+  project_title: str | None = None
+
+def get_args() -> argparse.Namespace:
+  """
+  Parses the command-line arguments.
+
     Returns: argparse.Namespace: Command-line arguments inputs as an
       argparse.Namespace object.
-    """
-    parser = argparse.ArgumentParser(
-      prog='download',
-      description='Download data from JATOS'
-    )
+  """
+  parser = argparse.ArgumentParser(
+    prog='download',
+    description='Download data from JATOS'
+  )
 
-    parser.add_argument(
-      '-s',
-      '--studies',
-      nargs='*',
-      help='one or more studies to download'
-    )
+  parser.add_argument(
+    '-s',
+    '--studies',
+    nargs='*',
+    help='one or more studies to download'
+  )
 
-    args = parser.parse_args()
+  args = parser.parse_args()
 
-    return args
+  return args
 
 class JatosDownloader:
+  """Downloads data from a JATOS server.
+
+  Attributes:
+    app_config: A class containing base_url, api_token and project_root.
+    args: User terminal arguments.
+    log: Logger.
+  """
   def __init__(
       self,
-      base_url: str,
-      api_token: str,
-      project_root: str,
+      app_config: AppConfig,
       args: argparse.Namespace,
       log: logging.Logger
   ):
 
-    self.base_url = base_url
-    self.headers = {'Authorization': f'Bearer {api_token}'}
-    self.project_root = Path(project_root)
+    self.base_url = app_config.base_url
+    self.headers = {'Authorization': f'Bearer {app_config.api_token}'}
+    self.project_root = Path(app_config.project_root)
     self.args = args
     self.log = log
 
     self.session = requests.Session()
     self.session.headers.update(self.headers)
 
-    self.current_study_id:      int | None = None
-    self.current_study_uuid:    str | None = None
-    self.current_result_id:     str | None = None
-    self.current_study_title:   str | None = None
-    self.current_project_title: str | None = None
-    self.current_task_version : str | None = None
+    self.state = StudyState()
 
   def _fetch(
       self,
@@ -86,7 +111,7 @@ class JatosDownloader:
       The HTTP response object.
 
     Raises:
-      requests.exceptions.RequestException: If the request fails.
+      ValueError if url criteria is not fulfilled
     """
     if not url.startswith(('http://', 'https://')):
       self.log.error('The URL must start with "http://" or "https://".')
@@ -105,8 +130,8 @@ class JatosDownloader:
 
       return response
 
-    except requests.exceptions.RequestException as e:
-      self.log.critical('Failed to fetch from URL: %s: %s', url, e)
+    except requests.exceptions.RequestException as error:
+      self.log.critical('Failed to fetch from URL: %s: %s', url, error)
       sys.exit(1)
 
   def get_studies_info(self) -> list[StudyInfo]:
@@ -132,21 +157,22 @@ class JatosDownloader:
 
       return [
         StudyInfo(
-          id=item['id'],
+          participant_id=item['id'],
           uuid=item['uuid'],
           title=item['title']
         )
         for item in data
       ]
 
-    except requests.exceptions.JSONDecodeError as e:
-      self.log.error('Invalid JSON response: %s', e)
+    except requests.exceptions.JSONDecodeError as error:
+      self.log.error('Invalid JSON response: %s', error)
       raise
 
-    except KeyError as e:
+    except KeyError as error:
       self.log.error(
         'Missing key in resposene: %s. Make sure that JATOS save all metadata '
-        'for each study correctly.'
+        'for each study correctly.',
+        error
       )
       raise
 
@@ -154,19 +180,20 @@ class JatosDownloader:
     """Fetches study result metadata for a study.
 
     Args:
-      study_id: The id of the study.
+      study_id: The ID of a study.
 
     Returns:
       A list with dictionaries where each element is metadata for a study.
 
     Raises:
       requests.exceptions.JSONDecodeError: If the response could not be decoded
-      into JSON
+        into JSON.
+      KeyError: If fetching the metadata was not successful.
     """
     url = f'{self.base_url}results/metadata'
     self.log.debug(
       'Fetching study metadata for %s ID %s',
-      self.current_study_title,
+      self.state.study_title,
       study_id
     )
     response = self._fetch(url, {'studyId': study_id})
@@ -176,21 +203,21 @@ class JatosDownloader:
 
       return study_result
 
-    except requests.exceptions.JSONDecodeError as e:
-      self.log.error('Invalid JSON response: %s', e)
+    except requests.exceptions.JSONDecodeError as error:
+      self.log.error('Invalid JSON response: %s', error)
       raise
 
     except IndexError:
       self.log.debug(
         'Study %s ID %s have no results',
-        self.current_study_title,
+        self.state.study_title,
         study_id
       )
       raise
 
-    except KeyError as e:
+    except KeyError as error:
       self.log.error(
-        'Failed to fetch metadata for study id %s: %s', study_id, e
+        'Failed to fetch metadata for study id %s: %s', study_id, error
       )
       raise
 
@@ -201,8 +228,8 @@ class JatosDownloader:
         return pid
     self.log.debug(
       'Could not find participant ID for study %s result ID %s',
-      self.current_study_title,
-      self.current_result_id
+      self.state.study_title,
+      self.state.result_id
     )
     return None
 
@@ -216,23 +243,23 @@ class JatosDownloader:
       metadata: A dictonary with metadata from a study.
 
     Returns:
-      A list with strings or None.
+      A list with metadata from a study.
     """
     data: list[str | int | None] = []
 
-    data.append(self.current_study_title)
+    data.append(self.state.study_title)
 
-    self.current_result_id = metadata.get('id')
-    data.append(self.current_result_id)
+    self.state.result_id = metadata.get('id')
+    data.append(self.state.result_id)
 
     self.log.debug(
       'Extracting result ID %s metadata values from study %s',
-      self.current_result_id, self.current_study_title
+      self.state.result_id, self.state.study_title
     )
 
     data.append(metadata.get('uuid', None))
-    data.append(self.current_study_id)
-    data.append(self.current_study_uuid)
+    data.append(self.state.study_id)
+    data.append(self.state.study_uuid)
 
     date_start = metadata.get('startDate', None)
     if date_start:
@@ -261,10 +288,10 @@ class JatosDownloader:
     """Fetches result data as a zip file.
 
     Args:
-      id: Result id of a study.
+      result_id: Result id of a study.
 
     Returns:
-      io.BytesIO.
+      Result as io.BytesIO.
     """
     url = f'{self.base_url}results/data'
     self.log.debug('Fetching result data for result id %s', result_id)
@@ -282,25 +309,25 @@ class JatosDownloader:
 
     Raises:
       zipfile.BadZipFile: If bytes_data does not contains a valid ZIP archive.
-      OSError: If the output file cannot be written.
+      Exception: If unexpected error occurs.
 
     Side effects:
       Writes a .gz file to disk.
     """
     self.log.debug(
       'Saving rawdata %s to project %s',
-      savepath.name, self.current_project_title
+      savepath.name, self.state.project_title
     )
 
     try:
-      zip_file = zipfile.ZipFile(bytes_data)
-      filename = zip_file.namelist()[0]
+      with zipfile.ZipFile(bytes_data) as zip_file:
+        filename = zip_file.namelist()[0]
 
-      with zip_file.open(filename) as content:
-        data = content.read()
+        with zip_file.open(filename) as content:
+          data = content.read()
 
-      with gzip.open(savepath, 'x', newline=None) as f:
-        f.write(data)
+      with gzip.open(savepath, 'x', newline=None) as file:
+        file.write(data)
 
     except FileExistsError:
       self.log.debug(
@@ -314,8 +341,8 @@ class JatosDownloader:
           filename = Path(filename_with_sufix).stem
           new_savepath = savepath.with_stem(filename + f'_{sufix}' + '.txt')
 
-          with gzip.open(new_savepath, 'x', newline=None) as f:
-            f.write(data)
+          with gzip.open(new_savepath, 'x', newline=None) as file:
+            file.write(data)
 
           self.log.debug('Saved as %s instead', new_savepath.name)
           break
@@ -323,14 +350,14 @@ class JatosDownloader:
         except FileExistsError:
           sufix += 1
 
-        except Exception as e:
-          self.log.error(
-            'Unexpected error while saving file: %s. %s',
-            new_savepath.name, e
+        except Exception: # pylint: disable=broad-except
+          self.log.exception(
+            'Unexpected error while saving file: %s',
+            new_savepath.name
           )
 
-    except zipfile.BadZipFile as e:
-      self.log.error('Failed to open zipfile: %s', e)
+    except zipfile.BadZipFile as error:
+      self.log.error('Failed to open zipfile: %s', error)
       raise
 
     except IndexError:
@@ -338,8 +365,8 @@ class JatosDownloader:
         'No result found for %s', savepath.name
       )
 
-    except Exception as e:
-      self.log.error('Failed to save file %s: %s', savepath.name, e)
+    except Exception as error:
+      self.log.exception('Failed to save file %s: %s', savepath.name, error)
       raise
 
   def load_or_create_result_index(self, path: Path) -> pd.DataFrame:
@@ -356,36 +383,40 @@ class JatosDownloader:
       self.log.debug(
         'Found %s for project %s',
         config.RESULT_INDEX,
-        self.current_project_title
+        self.state.project_title
       )
-      df = pd.read_csv(path, dtype={"participant_id": "string"}, sep='\t')
-      return df
+      result_index = pd.read_csv(
+        path, dtype={"participant_id": "string"}, sep='\t'
+      )
+      return result_index
 
     self.log.debug(
       'Did not find %s for project %s, creating one',
       config.RESULT_INDEX,
-      self.current_project_title
+      self.state.project_title
     )
 
     return pd.DataFrame(columns=config.RESULT_INDEX_HEADERS)
 
-  def _filter_new_results(self, study_metadata, existing_uuids):
+  @staticmethod
+  def _filter_new_results(study_metadata, existing_uuids):
     results = []
     for row in study_metadata:
       if row.get('uuid') not in existing_uuids:
         results.append(row)
     return results
 
-  def _append_new_result(self, df, rows):
+  def _append_new_result(self, result_index, rows):
     data = []
     for row in rows:
       try:
         data.append(self.get_result_index_values(row))
-      except Exception as e:
-        self.log.error(e)
 
-    new_df = pd.DataFrame(data, columns=df.columns)
-    return pd.concat([new_df, df], ignore_index=True)
+      except Exception: # pylint: disable=broad-except
+        self.log.exception('Error appening result index values to data: ')
+
+    new_df = pd.DataFrame(data, columns=result_index.columns)
+    return pd.concat([new_df, result_index], ignore_index=True)
 
   def process_study(self, study: StudyInfo):
     """Download results and update result index.
@@ -396,26 +427,25 @@ class JatosDownloader:
     Side effects: Saves files to disk.
     """
     # Variables for logging
-    self.current_study_id = study.id
-    self.current_study_uuid = study.uuid
-    self.current_study_title = study.title
+    self.state.study_id = study.participant_id
+    self.state.study_uuid = study.uuid
+    self.state.study_title = study.title
 
-    project_root = self.project_root / self.current_project_title
+    project_root = self.project_root / self.state.project_title
     result_index_path = project_root / config.RESULT_INDEX
-    study_metadata = self.get_study_metadata(study.id)
-    df = self.load_or_create_result_index(result_index_path)
-    existing_uuids = set(df['result_uuid'])
+    study_metadata = self.get_study_metadata(study.participant_id)
+    result_index = self.load_or_create_result_index(result_index_path)
+    existing_uuids = set(result_index['result_uuid'])
 
     new_rows = self._filter_new_results(study_metadata, existing_uuids)
 
     if new_rows:
-      df = self._append_new_result(df, new_rows)
+      result_index = self._append_new_result(result_index, new_rows)
 
-    sufix: int = 1
+    result_index.to_csv(result_index_path, sep='\t', index=False)
 
-    df.to_csv(result_index_path, sep='\t', index=False)
-
-  def _construct_result_filename(self, title: str, pid: str, rid: int) -> str:
+  @staticmethod
+  def _construct_result_filename(title: str, pid: str, rid: int) -> str:
     ses  = utils.regex(title, config.REGEX_PROJECT_SES)
     task = utils.regex(title, config.REGEX_PROJECT_TASK)
 
@@ -449,15 +479,18 @@ class JatosDownloader:
     Side effects:
       Download and writes files to disk.
     """
-    self.current_project_title = directory.name
+    # pylint: disable=no-member
+
+    self.state.project_title = directory.name
     result_index_path = directory / config.RESULT_INDEX
-    df = pd.read_csv(
+    result_index : pd.DataFrame = pd.read_csv(
       result_index_path, dtype={"participant_id": "string"}, sep='\t'
     )
 
     raw_data_dir = self.project_root / directory / config.RAW_DATA
 
-    pending_rows = df[df['download_status'] != config.DOWNLOADED]
+    pending_rows = result_index[
+      result_index['download_status'] != config.DOWNLOADED]
 
     if  pending_rows.empty:
       return
@@ -465,7 +498,7 @@ class JatosDownloader:
     pbar = tqdm(
       pending_rows.iterrows(),
       total=len(pending_rows),
-      desc=f'Downloading {self.current_project_title}: '
+      desc=f'Downloading {self.state.project_title}: '
     )
 
     for index, row in pbar:
@@ -477,71 +510,85 @@ class JatosDownloader:
           target_dir=raw_data_dir
         )
 
-        df.loc[index, 'download_status'] = config.DOWNLOADED
-        df.loc[index, 'downloaded_at']  = \
+        result_index.loc[index, 'download_status'] = config.DOWNLOADED
+        result_index.loc[index, 'downloaded_at']  = \
           datetime.datetime.now().strftime(config.TIME_FORMAT)
 
-      except Exception as e:
-        self.log.error(
-          'Failed processing result id:%s, participant id: %s. %s',
-          row['result_id'], row['participant_id'], e
+      except Exception: # pylint: disable=broad-except
+        self.log.exception(
+          'Failed processing result id:%s, participant id: %s',
+          row['result_id'], row['participant_id']
         )
-        df.at[index, 'download_status'] = config.DOWNLOAD_FAILED
+        result_index.at[index, 'download_status'] = config.DOWNLOAD_FAILED
 
-      df.to_csv(result_index_path, sep='\t', index=False)
+      result_index.to_csv(result_index_path, sep='\t', index=False)
 
   def run(self):
+    """Execute the download workflow."""
     try:
       # Get project metadata and create result index
       studies = self.get_studies_info()
       pbar = tqdm(
         studies,
         total=len(studies),
-        desc=f'Processing studies: '
+        desc='Processing studies: '
       )
       for study in pbar:
-        self.current_project_title = utils.regex(
+        self.state.project_title = utils.regex(
           study.title, config.REGEX_PROJECT_TITLE
         )
         # Skip project if is not specified by the user
-        if args.studies and self.current_project_title not in self.args.studies:
+        if (
+          self.args.studies
+          and self.state.project_title not in self.args.studies
+        ):
           continue
         try:
           self.process_study(study)
         except IndexError:
           continue
-        except Exception as e:
-          self.log.error('Study failed: %s, %s', study, e)
+        except Exception: # pylint: disable=broad-except
+          self.log.exception('Study failed: ')
 
       # Get result data and update result index
       project_dirs = utils.get_all_project_dirs(self.project_root)
       for project_dir in project_dirs:
         # Skip project if is not specified by the user
-        if args.studies and project_dir.name not in self.args.studies:
+        if self.args.studies and project_dir.name not in self.args.studies:
           continue
         try:
           self.download_results(project_dir)
-        except Exception as e:
-          self.log.error('Download failed: %s', e)
+        except Exception: # pylint: disable=broad-except
+          self.log.exception('Download failed: ')
 
     finally:
       self.log.info('Download completed')
       self.session.close()
 
-if __name__ == "__main__":
+def main():
+  """Load configuration and start the downloader."""
   load_dotenv()
-  base_url  = os.getenv('BASE_URL')
-  api_token = os.getenv('API_TOKEN')
-  project_root = os.getenv('PROJECT_ROOT')
+  app_config = AppConfig(
+    os.getenv('BASE_URL'),
+    os.getenv('API_TOKEN'),
+    os.getenv('PROJECT_ROOT')
+  )
 
-  args = getArgs()
+  args = get_args()
 
-  if not base_url or not api_token or not project_root:
+  if (
+      not app_config.base_url or
+      not app_config.api_token or
+      not app_config.project_root
+  ):
     print('base_url, api_token and project_root must be set in .env file')
-    exit()
+    sys.exit(1)
 
-  log = log_util.setupLogging(project_root / config.DOWNLOAD_LOG)
+  log = log_util.setupLogging(app_config.project_root / config.DOWNLOAD_LOG)
   log.info('Configuration loaded successfully')
 
-  downloader = JatosDownloader(base_url, api_token, project_root, args, log)
+  downloader = JatosDownloader(app_config, args, log)
   downloader.run()
+
+if __name__ == "__main__":
+  main()
