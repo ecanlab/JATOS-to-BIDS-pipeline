@@ -1,74 +1,85 @@
-import os
-import sys
+"""Validate and process data downloaded from JATOS."""
+
+# Standard library
+import argparse
 import gzip
 import json
-import utils
-import config
 import logging
-import argparse
-import pandas as pd
-from tqdm import tqdm
-import log as log_util
-from typing import Any
-from pathlib import Path
-from dotenv import load_dotenv
+import os
+import sys
 from dataclasses import dataclass
-from pydantic import BaseModel, ValidationError
+from pathlib import Path
+from typing import Any
 
+# Third-party
+import pandas as pd
+from dotenv import load_dotenv
+from pydantic import BaseModel
+from tqdm import tqdm
+
+# Local
+import config
+import log as log_util
+import utils
+
+@dataclass
 class Version(BaseModel):
+  """Used to find the mapping for a task."""
   mapping: dict[str, str]
 
+@dataclass
 class Task(BaseModel):
+  """Used to find specific version of a task."""
   version: dict[str, Version]
 
+@dataclass
 class Ids(BaseModel):
+  """IDs in a project."""
   ids: list[int]
 
+@dataclass
 class Project(BaseModel):
+  """Used to find all IDs in a project."""
   title: dict[Ids, str]
 
+@dataclass
 class ProjectConfig(BaseModel):
+  """JSON structure for project config that contains tasks and projects."""
   task: dict[str, Task]
   project: dict[str, Ids] | None = None
 
 @dataclass
 class TaskInfo:
+  """Holds the current task's info."""
   title: str
   name: str
   version: str
 
 class ValidationError(Exception):
   """Base class for validation errors."""
-  pass
 
 class NewIdCorrectionsFile(ValidationError):
   """Raised when a new validation_protocol.tsv is created in a project."""
-  pass
 
 class MissingAction(ValidationError):
   """Raised when a action is missing for a line in the validation_protocol.tsv.
   """
-  pass
 
 class MissingArgument(ValidationError):
   """Raised when an Argument is missing for a action in validation_protocol.tsv.
   """
-  pass
 
 class WrongAction(ValidationError):
   """Raised when a wrong action is specified in validation_protocol.tsv."""
-  pass
 
 class FileError(Exception):
   """Base class for file error."""
 
 class BadZipFile(FileError):
   """Raised when a zipfile cannot be opend."""
-  pass
 
 class JSONDecodeError(FileError):
   """Raised when JSON structure cannot be loaded."""
-  pass
 
 class NoDataInFile(FileError):
   """Raised when there is only one symbol in data."""
@@ -76,29 +87,36 @@ class NoDataInFile(FileError):
 class NoTitleFound(Exception):
   """Raised when no title could be found in data."""
 
-def getArgs() -> argparse.Namespace:
-    """
-    Parses the command-line arguments.
-    Returns: argparse.Namespace: Command-line arguments inputs as an
-      argparse.Namespace object.
-    """
-    parser = argparse.ArgumentParser(
-      prog='validate',
-      description='Validate data from JATOS downloaded by the download script'
-    )
+def get_args() -> argparse.Namespace:
+  """
+  Parses the command-line arguments.
+  Returns: argparse.Namespace: Command-line arguments inputs as an
+    argparse.Namespace object.
+  """
+  parser = argparse.ArgumentParser(
+    prog='validate',
+    description='Validate data from JATOS downloaded by the download script'
+  )
 
-    parser.add_argument(
-      '-s',
-      '--studies',
-      nargs='*',
-      help='one or more studies to validate'
-    )
+  parser.add_argument(
+    '-s',
+    '--studies',
+    nargs='*',
+    help='one or more studies to validate'
+  )
 
-    args = parser.parse_args()
+  args = parser.parse_args()
 
-    return args
+  return args
 
 class Validator():
+  """Validate and process downloaded data from JATOS.
+
+  Attributes:
+    project_root: Path to where data have been downloaded.
+    args: User terminal arguments.
+    log: Logger.
+  """
   def __init__ (
       self,
       project_root: str,
@@ -108,6 +126,7 @@ class Validator():
     self.project_root = Path(project_root)
     self.args = args
     self.log = log
+
     self.result_index: pd.DataFrame
     self.validation_protocol: pd.DataFrame
     self.project_config: ProjectConfig
@@ -139,19 +158,24 @@ class Validator():
     self.log.info('Found project_config.json')
 
     try:
-      with open(path, 'r') as f:
-        return json.load(f)
-    except json.JSONDecodeError as e:
-      self.log.critical('Ivalid JSON in project config: %s', e)
+      with open(path, 'r', encoding="utf-8") as file:
+        return json.load(file)
+
+    except json.JSONDecodeError as error:
+      self.log.critical('Ivalid JSON in project config: %s', error)
       sys.exit(1)
 
   def validate_project_config(self, project_config: dict) -> ProjectConfig:
+    """Validates project config JSON file based on it's structure.
+
+    Args: project_config: The project config dictonary.
+    """
     try:
       self.log.info('Validating project config')
       return ProjectConfig.model_validate(project_config)
 
-    except ValidationError as e:
-      self.log.critical('Could not validate json structure: %s', e)
+    except ValidationError as error:
+      self.log.critical('Could not validate json structure: %s', error)
       sys.exit(1)
 
   def _check_validated_data_dir(self, validated_data_dir: Path):
@@ -225,52 +249,50 @@ class Validator():
           on='result_uuid',
           indicator=True
         )
-      new_rows = left[(left._merge=='left_only')].drop('_merge', axis=1)
+      new_rows = left[left['_merge']=='left_only'].drop('_merge', axis=1)
 
       if new_rows.empty:
         self.log.info('%s is Up-To-Date', config.VALIDATION_PROTOCOL.name)
         self.validate_pids()
         return
 
-      else:
-        self.log.info(
-          'Adding %d new row(s) to %s',
-          len(new_rows),
-          config.VALIDATION_PROTOCOL.name
-        )
-
-        new_rows['action'] = pd.NA
-        new_rows['argument'] = pd.NA
-
-        self.validation_protocol = pd.concat(
-          [self.validation_protocol, new_rows]
-        )
-        self.validate_pids()
-        self.validation_protocol.to_csv(path, sep='\t' , index=False)
-        return
-
-    else:
-      self.validation_protocol = self.result_index
-      self.validation_protocol[[
-        'id_not_in_project',
-        'duplicate_id',
-        'action',
-        'argument']] = None
-
-      self.validate_pids()
-
-      self.validation_protocol.to_csv(path, sep='\t', index=False)
-
       self.log.info(
-        'Created %s, in %s validated data, please fill in an action for each '
-        'row. Read the documentation for information about the different '
-        'actions',
-        path.name,
-        self.current_project_title
+        'Adding %d new row(s) to %s',
+        len(new_rows),
+        config.VALIDATION_PROTOCOL.name
       )
-      raise NewIdCorrectionsFile("New validation_protocol.tsv was created")
 
-  def find_id_not_in_project(self) -> bool:
+      new_rows['action'] = pd.NA
+      new_rows['argument'] = pd.NA
+
+      self.validation_protocol = pd.concat(
+        [self.validation_protocol, new_rows]
+      )
+      self.validate_pids()
+      self.validation_protocol.to_csv(path, sep='\t' , index=False)
+      return
+
+    self.validation_protocol = self.result_index
+    self.validation_protocol[[
+      'id_not_in_project',
+      'duplicate_id',
+      'action',
+      'argument']] = None
+
+    self.validate_pids()
+
+    self.validation_protocol.to_csv(path, sep='\t', index=False)
+
+    self.log.info(
+      'Created %s, in %s validated data, please fill in an action for each '
+      'row. Read the documentation for information about the different '
+      'actions',
+      path.name,
+      self.current_project_title
+    )
+    raise NewIdCorrectionsFile("New validation_protocol.tsv was created")
+
+  def find_id_not_in_project(self):
     """Updatedas validation protocol with information if the participant ID is
     part of the project or not.
 
@@ -280,9 +302,10 @@ class Validator():
     self.log.info('Checking if all participant IDs are part of the project')
     try:
       project = self.project_config.project.get(self.current_project_title)
-      project_ids = project.get(ids)
-    except Exception:
-      self.log.error(
+      project_ids = project.get('ids')
+
+    except Exception: # pylint: disable=broad-except
+      self.log.debug(
         'Did not find IDs for %s in %s, update %s if you want the script to '
         'automatically check if all IDs are part of the project',
         self.current_project_title,
@@ -293,7 +316,7 @@ class Validator():
       return
 
     # Check if all values in 'id_not_in_project' are 'None'
-    if self.calidation_protocol['id_not_in_project'].isnull().values().all():
+    if self.validation_protocol['id_not_in_project'].isnull().values().all():
       self.validation_protocol['id_not_in_project'] = \
         ~self.validation_protocol['id_not_in_project'].isin(project_ids)
 
@@ -303,19 +326,17 @@ class Validator():
 
     # Check if any value in 'id_not_in_project' are 'None'
     if self.validation_protocol['id_not_in_project'].isnull().values.any():
-      if duplicates.any():
-        self.log.info(
-          'New participant ID that is not part of the project found'
-        )
-        self.validation_protocol['id_not_in_project'] = duplicates
-        return
-      else:
-        self.log.info('No new duplicate IDs found')
-        return
+      self.validation_protocol['id_not_in_project'] = \
+        ~self.validation_protocol['id_not_in_project'].isin(project_ids)
+      self.log.info(
+        'New participant ID that is not part of the project found'
+      )
+      return
 
+    self.log.info('No new duplicate IDs found')
     return
 
-  def find_pid_duplicates(self) -> bool:
+  def find_pid_duplicates(self):
     """Find all participants IDs that are on multiple rows with the same study
        title.
     """
@@ -332,9 +353,9 @@ class Validator():
         self.log.info('Duplicate IDs found')
         self.validation_protocol['duplicate_id'] = duplicates
         return
-      else:
-        self.log.info('No duplicate IDs found')
-        return
+
+      self.log.info('No duplicate IDs found')
+      return
 
     # Check if any value in 'duplicate_id' are 'None'
     if self.validation_protocol['duplicate_id'].isnull().values.any():
@@ -343,27 +364,26 @@ class Validator():
         self.log.info('New duplicate IDs found')
         self.validation_protocol['duplicate_id'] = duplicates
         return
-      else:
-        self.log.info('No new duplicate IDs found')
-        return
+
+      self.log.info('No new duplicate IDs found')
+      return
 
     # Check if duplicates and 'duplicate_id' are equal
     if self.validation_protocol['duplicate_id'].equals(duplicates):
       return
 
-    else:
-      self.validation_protocol['duplicate_id'] = duplicates
-      self.log.info('Correcting "duplicate_id" column')
+    self.validation_protocol['duplicate_id'] = duplicates
+    self.log.info('Correcting "duplicate_id" column')
 
   def validate_pids(self):
     """Validate participant IDs by checking for duplicates and comparing all IDs
     to the project participant IDs.
     """
     self.log.info('Validating IDs')
-    found_id_not_in_project = self.find_id_not_in_project()
-    found_pid_duplicates = self.find_pid_duplicates()
+    self.find_id_not_in_project()
+    self.find_pid_duplicates()
 
-  def _get_action(self, rid: int, pid: int) -> config.Action:
+  def _get_action(self, rid: int) -> config.Action:
     row = self.validation_protocol.loc[
       (self.validation_protocol["result_id"] == rid),
       "action"
@@ -387,7 +407,7 @@ class Validator():
 
     return argument
 
-  def validate_validation_protocol(self, project_dir: Path):
+  def validate_validation_protocol(self):
     """Check that all entries in validation_protocol have a correct action and
       argument.
     """
@@ -418,7 +438,8 @@ class Validator():
         f'{config.VALIDATION_PROTOCOL.name}'
       )
 
-  def repair_json_data(self, incomplete_json: bytes, pos: int) -> str:
+  @staticmethod
+  def repair_json_data(incomplete_json: bytes, pos: int) -> str:
     """Fix corrupt JSON data by adding missing brackets and data wrapper.
 
     'incomplete_json' must be an OpenSesame style JSON fragment that ends
@@ -460,31 +481,32 @@ class Validator():
         json_content = json.loads(data)
       return json_content
 
-    except gzip.BadGzipFile as e:
-      raise BadZipFile(f'Failed to open zipfile: {e}')
+    except gzip.BadGzipFile as error:
+      raise BadZipFile('Failed to open zipfile: ') from error
 
-    except json.JSONDecodeError as e:
-      self.log.debug('JSON decode error in file: %s: %s', path.name, e)
+    except json.JSONDecodeError as error:
+      self.log.debug('JSON decode error in file: %s: %s', path.name, error)
 
       try:
         json_content = self.repair_json_data(data, 2)
         self.log.debug('Error was fixed for file: %s', path.name)
         return json_content
 
-      except json.JSONDecodeError as e:
+      except json.JSONDecodeError:
         try:
           json_content = self.repair_json_data(data, 1)
           self.log.debug('Error was fixed for file: %s', path.name)
           return json_content
 
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError as error:
           raise JSONDecodeError(
-            f'Could not fix corrupt data in file {path.name}, {e}'
-          )
+            f'Could not fix corrupt data in file {path.name}'
+          ) from error
 
     return None
 
-  def get_task_title(self, data: str) -> str:
+  @staticmethod
+  def _get_task_title(data: str) -> str:
     task_title: str | None = None
 
     try:
@@ -503,46 +525,66 @@ class Validator():
             task_title = trial.get(title)
             if task_title is not None:
               return task_title
-        raise NoTitleFound('No title found')
+          raise NoTitleFound('No title found')
 
-    except IndexError as e:
-      raise NoDataInFile(f'No data found: {e}')
+      raise NoTitleFound('No title found')
 
-  def get_task_info(self, data: str) -> TaskInfo:
-    title = self.get_task_title(data)
+    except IndexError as error:
+      raise NoDataInFile('No data found: ') from error
+
+  def _get_task_info(self, data: str) -> TaskInfo:
+    title = self._get_task_title(data)
     name = utils.regex(title, config.REGEX_TASK_NAME)
     version = utils.regex(title, config.REGEX_TASK_VERSION)
 
     return TaskInfo(title=title, name=name.strip(), version=version)
 
   def get_mapping(self, task_info: TaskInfo) -> dict:
+    """Loads mapping for a task version.
+
+    Args: task_info: Info about the task.
+
+    Returns: A dictonary that contains variables names for a spcific task.
+    """
     try:
       self.log.debug('Loading mapping for %s', task_info.title)
       task = self.project_config.task[task_info.name]
       version = task.version[task_info.version]
       return version.mapping
 
-    except KeyError as e:
+    except KeyError as error:
       self.tasks_with_no_mapping.add(task_info.title)
       self.log.error('Could not find mapping for %s, make sure to fill out '
       'the project_config.json. %s'
-      , task_info.title, e)
+      , task_info.title, error)
       self.log.info('Looking trough the rest of the files for other versions')
+      raise
 
-  def populate_df(
+  def populate_result(
       self,
-      df: pd.DataFrame,
+      result: pd.DataFrame,
       mapping: dict,
       data: str
   ) -> pd.DataFrame:
+    """Identifies the structure of the data and goes trough each tril and
+      populate the result dataframe with values based on the mapping keys.
 
+    Args:
+      result: Dataframe that will be populated the values based on the mapping
+        keys.
+      mapping: Mapping with the tasks specific keys.
+      data: The data contaning all trials.
+
+    Returns:
+      Result dataframe.
+      """
     # Opensesame structure
     if isinstance(data, dict):
       self.log.debug(
         'Found Opensesame structure in the raw data, collecting variables'
       )
       for trial in data['data']:
-        df.loc[len(df)] = [trial.get(k, None) for k in mapping.values()]
+        result.loc[len(result)] = [trial.get(k, None) for k in mapping.values()]
 
     # jsPsych structure
     if isinstance(data, list):
@@ -550,9 +592,9 @@ class Validator():
         'Found jsPsych structure in the raw data, collecting variables'
       )
       for trial in data:
-        df.loc[len(df)] = [trial.get(k, None) for k in mapping.values()]
+        result.loc[len(result)] = [trial.get(k, None) for k in mapping.values()]
 
-    return df
+    return result
 
   def _new_filename(self, rid: int, pid: int, action: str, filename: str) -> str:
     new_pid = str(int(self._get_argument(rid, pid, action)))
@@ -564,6 +606,7 @@ class Validator():
     return filename
 
   def run(self):
+    """Execute the validate workflow."""
     project_config = self.load_project_config()
     self.project_config = self.validate_project_config(project_config)
 
@@ -576,7 +619,7 @@ class Validator():
 
     for project_dir in project_dirs:
       # Skip project if is not specified by the user
-      if args.studies and project_dir.name not in self.args.studies:
+      if self.args.studies and project_dir.name not in self.args.studies:
         continue
       self.log.info('-- %s --', project_dir.name)
 
@@ -588,10 +631,10 @@ class Validator():
 
       try:
         self.make_validation_protocol(project_dir)
-        self.validate_validation_protocol(project_dir)
+        self.validate_validation_protocol()
 
-      except ValidationError as e:
-        self.log.info('Skipping %s: %s', project_dir.name, e)
+      except ValidationError as error:
+        self.log.info('Skipping %s: %s', project_dir.name, error)
         continue
 
       self._check_validated_data_dir(path)
@@ -610,7 +653,7 @@ class Validator():
         rid = int(utils.regex(file.name, config.REGEX_RESULT_RID, group=1))
         sub = utils.regex(file.name, config.REGEX_SUB, group=1)
 
-        action = self._get_action(rid, sub)
+        action = self._get_action(rid)
 
         if action == config.Action.EXCLUDE:
           self.log.debug('Excluding %s', file.name)
@@ -618,14 +661,14 @@ class Validator():
 
         try:
           data = self.load_participant_raw_data(file)
-        except FileError as e:
-          self.log.debug(f'Error loading file: {e}')
+        except FileError as error:
+          self.log.debug(f'Error loading file: {error}')
           continue
 
         try:
-          task_info = self.get_task_info(data)
-        except FileError as e:
-          self.log.debug(f'Error loading file {file.name}: {e}')
+          task_info = self._get_task_info(data)
+        except FileError as error:
+          self.log.debug(f'Error loading file {file.name}: {error}')
           continue
         except NoTitleFound:
           self.log.critical(
@@ -640,8 +683,8 @@ class Validator():
         if not mapping:
           continue
 
-        df = utils.create_df_with_headers(mapping)
-        df = self.populate_df(df, mapping, data)
+        result = utils.create_df_with_headers(mapping)
+        result = self.populate_result(result, mapping, data)
         filename = file.name.replace('.txt.gz', '.tsv')
 
         if action == config.Action.REASSIGN_ID:
@@ -649,22 +692,26 @@ class Validator():
 
         filepath = path / filename
         self.log.debug('Saving validated data to %s', filepath.name)
-        df.to_csv(filepath, sep='\t', index=False)
+        result.to_csv(filepath, sep='\t', index=False)
 
     self.log.info('Validation completed')
 
-if __name__ == "__main__":
-  args = getArgs()
+def main():
+  """Load configuration and start the validator."""
+  args = get_args()
 
   load_dotenv()
   project_root = os.getenv('PROJECT_ROOT')
 
   if not project_root:
     print('project_root must be set in .env file')
-    exit()
+    sys.exit(1)
 
   log = log_util.setupLogging(project_root / config.VALIDATE_LOG)
   log.info('Configuration loaded successfully')
 
   validator = Validator(project_root, args, log)
   validator.run()
+
+if __name__ == "__main__":
+  main()
