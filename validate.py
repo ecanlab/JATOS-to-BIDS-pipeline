@@ -127,11 +127,10 @@ class Validator():
     self.args = args
     self.log = log
 
-    self.result_index: pd.DataFrame
-    self.validation_protocol: pd.DataFrame
-    self.project_config: ProjectConfig
-
-    self.current_project_title: Path = None
+    self.result_index: pd.DataFrame        | None = None
+    self.validation_protocol: pd.DataFrame | None = None
+    self.project_config: ProjectConfig     | None = None
+    self.current_project_title: str        | None = None
 
     self.tasks_with_no_mapping = set()
 
@@ -498,10 +497,10 @@ class Validator():
           self.log.debug('Error was fixed for file: %s', path.name)
           return json_content
 
-        except json.JSONDecodeError as error:
+        except json.JSONDecodeError as json_error:
           raise JSONDecodeError(
             f'Could not fix corrupt data in file {path.name}'
-          ) from error
+          ) from json_error
 
     return None
 
@@ -605,6 +604,64 @@ class Validator():
 
     return filename
 
+  def _process_project_files(self, project_dir, path):
+    """Process all raw data files in a project."""
+    path_raw_data = project_dir / config.RAW_DATA
+
+    files = list(path_raw_data.glob('*.gz'))
+    pbar = tqdm(
+      files,
+      total=len(files),
+      desc=f'Processing {project_dir.name}: '
+    )
+
+    for file in pbar:
+      pbar.set_postfix(file=file.name)
+      rid = int(utils.regex(file.name, config.REGEX_RESULT_RID, group=1))
+      sub = utils.regex(file.name, config.REGEX_SUB, group=1)
+
+      action = self._get_action(rid)
+
+      if action == config.Action.EXCLUDE:
+        self.log.debug('Excluding %s', file.name)
+        continue
+
+      try:
+        data = self.load_participant_raw_data(file)
+      except FileError as error:
+        self.log.debug(f'Error loading file: {error}')
+        continue
+
+      try:
+        task_info = self._get_task_info(data)
+      except FileError as error:
+        self.log.debug(f'Error loading file {file.name}: {error}')
+        continue
+      except NoTitleFound:
+        self.log.critical(
+          'Could not find title in %s data add title key in config',
+          file.name
+        )
+        continue
+
+      if task_info.title in self.tasks_with_no_mapping:
+        continue
+
+      mapping = self.get_mapping(task_info)
+      if not mapping:
+        continue
+
+      result = utils.create_df_with_headers(mapping)
+      result = self.populate_result(result, mapping, data)
+      filename = file.name.replace('.txt.gz', '.tsv')
+
+      if action == config.Action.REASSIGN_ID:
+        filename = self._new_filename(rid, sub, action, filename)
+
+      filepath = path / filename
+      self.log.debug('Saving validated data to %s', filepath.name)
+      result.to_csv(filepath, sep='\t', index=False)
+
   def run(self):
     """Execute the validate workflow."""
     project_config = self.load_project_config()
@@ -638,61 +695,7 @@ class Validator():
         continue
 
       self._check_validated_data_dir(path)
-
-      path_raw_data = project_dir / config.RAW_DATA
-
-      files = list(path_raw_data.glob('*.gz'))
-      pbar = tqdm(
-        files,
-        total=len(files),
-        desc=f'Processing {project_dir.name}: '
-      )
-
-      for file in pbar:
-        pbar.set_postfix(file=file.name)
-        rid = int(utils.regex(file.name, config.REGEX_RESULT_RID, group=1))
-        sub = utils.regex(file.name, config.REGEX_SUB, group=1)
-
-        action = self._get_action(rid)
-
-        if action == config.Action.EXCLUDE:
-          self.log.debug('Excluding %s', file.name)
-          continue
-
-        try:
-          data = self.load_participant_raw_data(file)
-        except FileError as error:
-          self.log.debug(f'Error loading file: {error}')
-          continue
-
-        try:
-          task_info = self._get_task_info(data)
-        except FileError as error:
-          self.log.debug(f'Error loading file {file.name}: {error}')
-          continue
-        except NoTitleFound:
-          self.log.critical(
-            'Could not find title in %s data add title key in config',
-            file.name
-          )
-
-        if task_info.title in self.tasks_with_no_mapping:
-          continue
-
-        mapping = self.get_mapping(task_info)
-        if not mapping:
-          continue
-
-        result = utils.create_df_with_headers(mapping)
-        result = self.populate_result(result, mapping, data)
-        filename = file.name.replace('.txt.gz', '.tsv')
-
-        if action == config.Action.REASSIGN_ID:
-          filename = self._new_filename(rid, sub, action, filename)
-
-        filepath = path / filename
-        self.log.debug('Saving validated data to %s', filepath.name)
-        result.to_csv(filepath, sep='\t', index=False)
+      self._process_project_files(project_dir, path)
 
     self.log.info('Validation completed')
 
