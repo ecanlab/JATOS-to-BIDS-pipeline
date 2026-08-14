@@ -58,7 +58,10 @@ class TaskInfo:
 class ValidationError(Exception):
   """Base class for validation errors."""
 
-class NewIdCorrectionsFile(ValidationError):
+class  ValidationProtocolHaveMoreRows(ValidationError):
+  """Raised when validation protocol have more rows than validation protocol."""
+
+class NewValidationProtocol(ValidationError):
   """Raised when a new validation_protocol.tsv is created in a project."""
 
 class MissingAction(ValidationError):
@@ -232,6 +235,15 @@ class Validator():
         path, sep='\t', dtype={'participant_id':'string'}
       )
 
+      # If result index have fewer rows that validation protocol ask the user to
+      # delete the validation protocol so it can be updated with the current
+      # result index
+      if len(self.result_index) < len(self.validation_protocol):
+        raise ValidationProtocolHaveMoreRows(
+          'Result index have fewer rows than validation protocol, '
+          f'remove {path.name} and run the script again.'
+        )
+
       # Sort both DataFrames by 'start_date' and 'result_id'
       self.validation_protocol.sort_values(
         by=['start_date', 'result_id'],
@@ -242,13 +254,11 @@ class Validator():
         ignore_index=True, inplace=True
       )
 
-      left = self.result_index.merge(
-          self.validation_protocol,
-          how='left',
-          on='result_uuid',
-          indicator=True
-        )
-      new_rows = left[left['_merge']=='left_only'].drop('_merge', axis=1)
+      new_rows = self.result_index.merge(
+        self.validation_protocol[['result_uuid']],
+        how='left_anti',
+        on='result_uuid',
+      )
 
       if new_rows.empty:
         self.log.info('%s is Up-To-Date', config.VALIDATION_PROTOCOL.name)
@@ -268,7 +278,11 @@ class Validator():
         [self.validation_protocol, new_rows]
       )
       self.validate_pids()
-      self.validation_protocol.to_csv(path, sep='\t' , index=False)
+      try:
+        self.validation_protocol.to_csv(path, sep='\t' , index=False)
+      except OSError as error:
+        self.log.error('Could not open file %s: %s', path, error)
+
       return
 
     self.validation_protocol = self.result_index
@@ -289,7 +303,7 @@ class Validator():
       path.name,
       self.current_project_title
     )
-    raise NewIdCorrectionsFile("New validation_protocol.tsv was created")
+    raise NewValidationProtocol("New validation_protocol.tsv was created")
 
   def find_id_not_in_project(self):
     """Updatedas validation protocol with information if the participant ID is
@@ -557,7 +571,6 @@ class Validator():
       'the project_config.json. %s'
       , task_info.title, error)
       self.log.info('Looking trough the rest of the files for other versions')
-      raise
 
   def populate_result(
       self,
