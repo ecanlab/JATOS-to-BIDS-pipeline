@@ -76,7 +76,7 @@ See [.env configuration](#configuration-env) for configuration.
                     └── sub-[ID]_task-[TASK]_beh.tsv
 ```
 
-## JATOS Study Naming Convention
+## Naming Convention
 
 To allow the pipeline to correctly identify the project, task, and task version, JATOS studies must follow specific naming conventions and the raw task data must contain certain variables.
 
@@ -88,7 +88,7 @@ The way this is done depends on whether the task was created with OpenSesame or 
 
 ### OpenSesame
 
-In OpenSesame, the first project object must contain the task name and version using the following naming convention:
+In OpenSesame, the first project object must be named using the following naming convention:
 
 ```text
 task-name v.x.x.x
