@@ -205,6 +205,8 @@ reassign_id  12345
 <a id="configuration-env"></a>
 ### .env
 
+Contains information about the JATOS server and project root.
+
 Create a `.env` file in the `JATOS-to-BIDS-pipeline` directory.
 
 The file must contain the following variables:
