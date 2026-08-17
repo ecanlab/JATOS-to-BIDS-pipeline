@@ -453,9 +453,8 @@ Clone the repository and navigate into the project directory:
 ```bash
 git clone <repository-url>
 cd JATOS-to-BIDS-pipeline
-2. Create a virtual environment
 ```
-### 2. Create a Python virtual environment in the project directory:
+### 2. Create a virtual environment:
 
 ```bash
 python3 -m venv .venv
@@ -482,3 +481,23 @@ pip install -r requirements.txt
 Create a .env file in the JATOS-to-BIDS-pipeline directory.
 
 See the [`.env` configuration](#env) section for information about the required variables.
+
+## Usage
+### Command-line arguments
+
+Both `download.py` and `validate.py` support the following argument:
+
+| Argument | Description |
+|---|---|
+| `-s`, `--studies` | One or more studies to download or validate. If omitted, all studies are processed. |
+
+### Example
+
+To download one or more specific studies:
+```Bash
+python download.py --studies STUDY_NAME
+```
+Multiple studies can be specified:
+```Bash
+python download.py --studies STUDY_NAME_1 STUDY_NAME_2 STUDY_NAME_3
+```
