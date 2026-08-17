@@ -10,8 +10,6 @@ It can handle results from both OpenSesame and jsPsych, including malformed JSON
 
 Connects to a JATOS server, downloads all results, and structures the downloaded files.
 
-It also creates a `result_index.tsv` file containing metadata for each result.
-
 ### `validate.py`
 
 Validates participant and study IDs within a project and allows the user to decide what to do with flagged results.
@@ -40,30 +38,17 @@ Contains the result metadata from `result_index.tsv`, together with validation i
 
 Created by the user.
 
-Contains the schema mapping for each task and, optionally, all participant IDs that are part of a project. The IDs are used during validation.
+Contains the schema mapping for each task and optionally all participant IDs that are part of a project. The IDs are used during validation.
+
+See  [`project_config.json` configuration](#project_config.json) for configuration.
 
 ### `.env`
 
-Create a `.env` file in the `JATOS-to-BIDS-pipeline` directory.
+Created by the user.
 
-The file must contain the following variables:
+Contains information about the JATOS server and project root.
 
-```dotenv
-DOMAIN=https://ADDRESS-TO-JATOS-SERVER
-API_TOKEN=jap_XXX
-BASE_URL=${DOMAIN}jatos/api/v1/
-PROJECT_ROOT=/path/to/project/root
-```
-
-Where:
-
-| Variable | Description |
-|---|---|
-| `DOMAIN` | The URL of the JATOS server. |
-| `API_TOKEN` | Your JATOS API token. |
-| `BASE_URL` | The base URL for the JATOS API. This is constructed from `DOMAIN`. |
-| `PROJECT_ROOT` | The root directory where project data will be stored. |
-
+See  [`.env` configuration](#.env) for configuration.
 
 ## Directory Structure
 
@@ -93,7 +78,7 @@ Where:
 
 ## JATOS Study Naming Convention
 
-To allow the pipeline to correctly identify the project, task, and task version, JATOS studies and the raw task data must follow specific naming conventions.
+To allow the pipeline to correctly identify the project, task, and task version, JATOS studies must follow specific naming conventions and the raw task data must contain certain variables.
 
 ### Task and Version
 
@@ -115,7 +100,7 @@ AACT v.1.0.0
 ```
 The version is used by the pipeline to select the correct mapping from project_config.json.
 
-jsPsych
+### jsPsych
 
 In jsPsych, the task name and version must be stored in a variable in the raw data.
 
@@ -128,7 +113,7 @@ The variable must then be stored in a trial so that jsPsych includes it in the r
 
 The variable used to store the task name and version must also be added to config.py under the Title keys comment.
 
-For example, if the variable is called test_version, add it to the title keys:
+For example, if the variable is called `test_version`, add it to the title keys:
 ```python
 # Title keys
 TITLE_KEYS = ['test_version']
@@ -136,11 +121,11 @@ TITLE_KEYS = ['test_version']
 
 The exact variable name used in config.py must match the variable stored in the jsPsych result data.
 
-JATOS Study Name
+### JATOS Study Name
 
 JATOS studies should follow this naming convention:
 
-PROJECT-NAME_arm-[ARM]_ses-[SES]_task-[TASK]
+[PROJECT-NAME]_arm-[ARM]_ses-[SES]_task-[TASK]
 
 For example:
 
@@ -150,7 +135,7 @@ The individual components are:
 
 | Component | Description |
 |---|---|
-| `PROJECT-NAME` | The name of the project that the task belongs to. |
+| `[PROJECT-NAME]` | The name of the project that the task belongs to. |
 | `arm-[ARM]` | Identifies a specific arm of the project. The pipeline does not currently use the arm, but it can be useful for distinguishing between different data collections, such as different laboratories or locations. |
 | `ses-[SES]` | Identifies the session. This can be used when a participant completes the same task during a follow-up session. The session can be a number or a string. |
 | `task-[TASK]` | The name of the task. The task name should not include the version. |
@@ -166,17 +151,6 @@ SELMA_arm-UPP01_ses-01_task-AACT
 SELMA_arm-UPP01_ses-02_task-AACT
 
 The task version should not be included in the JATOS study title. The version is instead stored in the raw task data and is used to select the appropriate version-specific mapping from project_config.json.
-
-For example:
-
-JATOS study title:
-SELMA_arm-UPP01_ses-01_task-AACT
-
-
-Raw task data:
-AACT v.2.0.3
-
-This allows multiple versions of the same task to be processed while keeping the JATOS study naming consistent.
 
 ## Validation
 
@@ -228,7 +202,33 @@ reassign_id  12345
 
 ## Configuration
 
+### .env
+
+Create a `.env` file in the `JATOS-to-BIDS-pipeline` directory.
+
+The file must contain the following variables:
+
+```dotenv
+DOMAIN=https://ADDRESS-TO-JATOS-SERVER
+API_TOKEN=jap_XXX
+BASE_URL=${DOMAIN}jatos/api/v1/
+PROJECT_ROOT=/path/to/project/root
+```
+
+Where:
+
+| Variable | Description |
+|---|---|
+| `DOMAIN` | The URL of the JATOS server. |
+| `API_TOKEN` | Your JATOS API token. |
+| `BASE_URL` | The base URL for the JATOS API. This is constructed from `DOMAIN`. |
+| `PROJECT_ROOT` | The root directory where project data will be stored. |
+
+### project_config.json
+
 The `project_config.json` file defines how data from different JATOS tasks and task versions should be processed. It can also optionally contain the participant IDs belonging to a project.
+
+Create a `project_config.json` file in the `code/JATOS/` directory.
 
 The configuration is organized into the following levels:
 
