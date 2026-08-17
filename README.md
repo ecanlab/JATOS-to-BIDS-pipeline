@@ -40,7 +40,7 @@ Created by the user.
 
 Contains the schema mapping for each task and optionally all participant IDs that are part of a project. The IDs are used during validation.
 
-See  [`project_config.json` configuration](#project_config.json) for configuration.
+See [project_config.json configuration](#configuration-project_config) for configuration.
 
 ### `.env`
 
@@ -48,7 +48,7 @@ Created by the user.
 
 Contains information about the JATOS server and project root.
 
-See  [`.env` configuration](#.env) for configuration.
+See [.env configuration](#configuration-env) for configuration.
 
 ## Directory Structure
 
@@ -202,6 +202,7 @@ reassign_id  12345
 
 ## Configuration
 
+<a id="configuration-env"></a>
 ### .env
 
 Create a `.env` file in the `JATOS-to-BIDS-pipeline` directory.
@@ -224,6 +225,7 @@ Where:
 | `BASE_URL` | The base URL for the JATOS API. This is constructed from `DOMAIN`. |
 | `PROJECT_ROOT` | The root directory where project data will be stored. |
 
+<a id="configuration-project_config"></a>
 ### project_config.json
 
 The `project_config.json` file defines how data from different JATOS tasks and task versions should be processed. It can also optionally contain the participant IDs belonging to a project.
