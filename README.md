@@ -88,7 +88,7 @@ The way this is done depends on whether the task was created with OpenSesame or 
 
 ### OpenSesame
 
-In OpenSesame, the first project object must be named using the following naming convention:
+In OpenSesame, the first object, project object, must be named using the following naming convention:
 
 ```text
 task-name v.x.x.x
@@ -142,13 +142,17 @@ The individual components are:
 
 For example, a project with data collected at two different locations could use:
 
-SELMA_arm-UPP01_ses-01_task-AACT
-SELMA_arm-KAR01_ses-01_task-AACT
+| Name |
+|---|
+| SELMA_arm-UPP01_ses-01_task-AACT |
+| SELMA_arm-KAR01_ses-01_task-AACT |
 
 If the same participant completes the task again during a follow-up session:
 
-SELMA_arm-UPP01_ses-01_task-AACT
-SELMA_arm-UPP01_ses-02_task-AACT
+| Name |
+|---|
+| SELMA_arm-UPP01_ses-01_task-AACT |
+| SELMA_arm-UPP01_ses-02_task-AACT |
 
 The task version should not be included in the JATOS study title. The version is instead stored in the raw task data and is used to select the appropriate version-specific mapping from project_config.json.
 
@@ -243,8 +247,6 @@ task
   └── version
         |
         └── mapping
-
-
 project
   |
   └── ids
@@ -299,25 +301,25 @@ The mapping section defines how variables in the raw JATOS data are renamed in t
 For example:
 ```JSON
 "mapping": {
-  "pleasantVolume": "pleasant_volume",
-  "rateReward": "rate_reward",
-  "response_touch_response": "choice",
-  "response_time_touch_response": "choice_rt"
+  "pleasant_volume": "pleasantVolume",
+  "rate_reward": "rateReward",
+  "choice": "response_touch_response",
+  "choice_rt": "response_time_touch_response"
 }
 ```
-The key on the left is the variable name as it appears in the raw JATOS data.
+The key on the left is the variable name used in the processed data.
 
-The value on the right is the variable name used in the processed data.
+The value on the right is the variable name as it appears in the raw JATOS data.
 
 In other words:
 ```text
 Raw JATOS variable           Processed variable
 ------------------           ------------------
-pleasantVolume          ->   pleasant_volume
-rateReward              ->   rate_reward
-response_touch_response ->   choice
+pleasant_volume       ->     pleasantVolume
+rate_reward           ->     rateReward
+choice                ->     response_touch_response
 ```
-The pipeline looks for the variable on the left in the raw data and stores its value using the variable name on the right.
+The pipeline looks for the variable on the right in the raw data and stores its value using the variable name on the left.
 
 Handling Different Task Versions
 
@@ -326,13 +328,13 @@ Multiple mappings for the same task are useful when the task has been updated an
 For example, suppose version v.1.0.0 of a task contains:
 ```JSON
 "mapping": {
-  "response_touch_response": "choice"
+  "choice": "response_touch_response"
 }
 ```
 Later, the task is updated to version v.2.0.0 and the variable is renamed:
 ```JSON
 "mapping": {
-  "response": "choice"
+  "choice": "response"
 }
 ```
 Both versions can be defined in project_config.json:
@@ -341,12 +343,12 @@ Both versions can be defined in project_config.json:
   "version": {
     "v.1.0.0": {
       "mapping": {
-        "response_touch_response": "choice"
+        "choice": "response_touch_response"
       }
     },
     "v.2.0.0": {
       "mapping": {
-        "response": "choice"
+        "choice": "response"
       }
     }
   }
@@ -362,28 +364,30 @@ The project section of project_config.json can be used to specify all participan
 
 These IDs are used by validate.py to determine whether a result belongs to the project.
 
+Since IDs may contain characters other than digits, they should be entered as strings.
+
 For example:
 ```JSON
 {
   "project": {
     "SELMA": {
-      "ids": [123, 456, 789, 101, 102]
+      "ids": ["123", "456", "789", "101", "102"]
     }
   }
 }
 ```
 The project name is used to identify the project, and the ids list contains all participant IDs that are expected to be part of the project.
 
-During validation, each participant ID in the downloaded results is compared against this list.
+During validation, each participant ID in the validation_protocol.tsv is compared against this list.
 
-If an ID is found in the downloaded results but is not included in the project's ids list, the id_not_in_project column in validation_protocol.tsv is set to TRUE.
+If an ID is found in the downloaded results but is not included in the project's IDs list, the id_not_in_project column in validation_protocol.tsv is set to TRUE.
 
 For example, if the configuration contains:
 ```JSON
 {
   "project": {
     "SELMA": {
-      "ids": [123, 456, 789]
+      "ids": ["123", "456", "789"]
     }
   }
 }
@@ -409,21 +413,21 @@ A complete configuration for a task with two versions and a list of project IDs 
         "v.1.0.0": {
           "mapping": {
             "ID": "ID",
-            "pleasantVolume": "pleasant_volume",
-            "unpleasantVolume": "unpleasant_volume",
-            "rateReward": "rate_reward",
-            "response_touch_response": "choice",
-            "response_time_touch_response": "choice_rt"
+            "pleasant_volume": "pleasantVolume",
+            "unpleasant_volume": "unpleasantVolume",
+            "rate_reward": "rateReward",
+            "choice": "response_touch_response",
+            "choice_rt": "response_time_touch_response"
           }
         },
         "v.2.0.0": {
           "mapping": {
             "ID": "ID",
-            "pleasantVolume": "pleasant_volume",
-            "unpleasantVolume": "unpleasant_volume",
-            "rateReward": "rate_reward",
-            "response": "choice",
-            "response_time": "choice_rt"
+            "pleasant_volume": "pleasantVolume",
+            "unpleasant_volume": "unpleasantVolume",
+            "rate_reward": "rateReward",
+            "choice": "response",
+            "choice_rt": "response_time"
           }
         }
       }
@@ -431,12 +435,12 @@ A complete configuration for a task with two versions and a list of project IDs 
   },
   "project": {
     "SELMA": {
-      "ids": [123, 456, 789, 101, 102]
+      "ids": ["123", "456", "789", "101", "102"]
     }
   }
 }
 ```
-The important concept is that the right-hand side defines the standardized output variable names, while the left-hand side defines where the pipeline finds those variables in the raw JATOS data.
+The important concept is that the left-hand side defines the standardized output variable names, while the right-hand side defines where the pipeline finds those variables in the raw JATOS data.
 
 The project section is optional. If included, the ids list contains all participant IDs that belong to the project and is used by validate.py to identify results with IDs that are not part of the project.
 
