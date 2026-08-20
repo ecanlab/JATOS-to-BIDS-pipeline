@@ -35,7 +35,7 @@ class Task(BaseModel):
 @dataclass
 class Ids(BaseModel):
   """IDs in a project."""
-  ids: list[int]
+  ids: list[str]
 
 @dataclass
 class Project(BaseModel):
@@ -260,28 +260,32 @@ class Validator():
         on='result_uuid',
       )
 
+      if not new_rows.empty:
+        self.log.info(
+          'Adding %d new row(s) to %s',
+          len(new_rows),
+          config.VALIDATION_PROTOCOL.name
+        )
+
+        new_rows['action'] = pd.NA
+        new_rows['argument'] = pd.NA
+
+        self.validation_protocol = pd.concat(
+          [self.validation_protocol, new_rows]
+        )
+
+      self.validate_pids()
+
+      self.validation_protocol.to_csv(path, sep='\t', index=False)
+
       if new_rows.empty:
         self.log.info('%s is Up-To-Date', config.VALIDATION_PROTOCOL.name)
-        self.validate_pids()
         return
 
-      self.log.info(
-        'Adding %d new row(s) to %s',
-        len(new_rows),
-        config.VALIDATION_PROTOCOL.name
-      )
-
-      new_rows['action'] = pd.NA
-      new_rows['argument'] = pd.NA
-
-      self.validation_protocol = pd.concat(
-        [self.validation_protocol, new_rows]
-      )
-      self.validate_pids()
       try:
         self.validation_protocol.to_csv(path, sep='\t' , index=False)
       except OSError as error:
-        self.log.error('Could not open file %s: %s', path, error)
+        self.log.error('Could not save file %s: %s', path, error)
 
       return
 
@@ -293,7 +297,6 @@ class Validator():
       'argument']] = None
 
     self.validate_pids()
-
     self.validation_protocol.to_csv(path, sep='\t', index=False)
 
     self.log.info(
@@ -306,47 +309,65 @@ class Validator():
     raise NewValidationProtocol("New validation_protocol.tsv was created")
 
   def find_id_not_in_project(self):
-    """Updatedas validation protocol with information if the participant ID is
-    part of the project or not.
+    """Update validation protocol with information about project membership.
 
-    If a participant ID is not part of the project mark that row as True in the
-    new column. The project IDs are specified in project_config.json.
+    If a participant ID is not part of the project, mark that row as True.
+    The project IDs are specified in project_config.json.
     """
     self.log.info('Checking if all participant IDs are part of the project')
+
     try:
       project = self.project_config.project.get(self.current_project_title)
-      project_ids = project.get('ids')
+      project_ids = project.ids
 
-    except Exception: # pylint: disable=broad-except
-      self.log.debug(
-        'Did not find IDs for %s in %s, update %s if you want the script to '
-        'automatically check if all IDs are part of the project',
+    except Exception:  # pylint: disable=broad-except
+      self.log.info(
+        'Did not find IDs for %s in %s, update %s if you want the script '
+        'to automatically check if all IDs are part of the project',
         self.current_project_title,
         config.PROJECT_CONFIG.name,
         config.PROJECT_CONFIG.name
       )
-      self.validation_protocol['id_not_in_project'] = False
+      self.validation_protocol['id_not_in_project'] = pd.NA
       return
 
-    # Check if all values in 'id_not_in_project' are 'None'
-    if self.validation_protocol['id_not_in_project'].isnull().values().all():
-      self.validation_protocol['id_not_in_project'] = \
-        ~self.validation_protocol['id_not_in_project'].isin(project_ids)
+    # Save the previous validation to detect changes.
+    previous = self.validation_protocol['id_not_in_project'].copy()
 
+    # Allways update 'id_not_in_project' because IDs in 'project_config.json'
+    # may change.
+    self.validation_protocol['id_not_in_project'] = (
+      ~self.validation_protocol['participant_id'].isin(project_ids)
+    )
+
+    # Check if this is the first validation of the column
+    if previous.isnull().all():
       if self.validation_protocol['id_not_in_project'].any():
-        self.log.warning('Found participant ID that is not part of the project')
+        self.log.info(
+          'Found participant ID that is not part of the project'
+        )
+      else:
+        self.log.info('No IDs outside of project found')
+      return
+
+    # Check if there are newly added rows that have not been validated
+    if previous.isnull().any():
+      new_rows = previous.isnull()
+
+      if self.validation_protocol.loc[new_rows, 'id_not_in_project'].any():
+        self.log.info(
+          'New participant ID that is not part of the project found'
+        )
         return
 
-    # Check if any value in 'id_not_in_project' are 'None'
-    if self.validation_protocol['id_not_in_project'].isnull().values.any():
-      self.validation_protocol['id_not_in_project'] = \
-        ~self.validation_protocol['id_not_in_project'].isin(project_ids)
+    # Check if the project IDs changed the validation result.
+    if not previous.equals(self.validation_protocol['id_not_in_project']):
       self.log.info(
-        'New participant ID that is not part of the project found'
+        'Project IDs changed, updated participant project validation'
       )
       return
 
-    self.log.info('No new duplicate IDs found')
+    self.log.info('No new IDs outside of project found')
     return
 
   def find_pid_duplicates(self):
@@ -373,12 +394,14 @@ class Validator():
     # Check if any value in 'duplicate_id' are 'None'
     if self.validation_protocol['duplicate_id'].isnull().values.any():
       new_rows = self.validation_protocol['duplicate_id'].isnull().values.sum()
-      if duplicates[:-new_rows].any():
+
+      if duplicates[-new_rows:].any():
         self.log.info('New duplicate IDs found')
         self.validation_protocol['duplicate_id'] = duplicates
         return
 
       self.log.info('No new duplicate IDs found')
+      self.validation_protocol['duplicate_id'] = duplicates
       return
 
     # Check if duplicates and 'duplicate_id' are equal
@@ -578,7 +601,7 @@ class Validator():
       mapping: dict,
       data: str
   ) -> pd.DataFrame:
-    """Identifies the structure of the data and goes trough each tril and
+    """Identifies the structure of the data and goes trough each trial and
       populate the result dataframe with values based on the mapping keys.
 
     Args:
@@ -600,11 +623,11 @@ class Validator():
 
     # jsPsych structure
     if isinstance(data, list):
-      self.log.debug(
+       self.log.debug(
         'Found jsPsych structure in the raw data, collecting variables'
       )
-      for trial in data:
-        result.loc[len(result)] = [trial.get(k, None) for k in mapping.values()]
+       for trial in data:
+         result.loc[len(result)] = [trial.get(k, None) for k in mapping.values()]
 
     return result
 
