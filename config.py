@@ -3,10 +3,11 @@ from enum import Enum
 from pathlib import Path
 
 # Paths
-JATOS_FOLDER        = Path('sourcedata/JATOS')
+SOURCE_JATOS        = Path('sourcedata/JATOS')
 RAW_DATA            = Path('sourcedata/JATOS/raw_data/')
 RESULT_INDEX        = Path(RAW_DATA / 'result_index.tsv')
 PROJECT_CONFIG      = Path('code/JATOS/project_config.json')
+CODE_JATOS          = Path('code/JATOS/')
 VALIDATED_DATA      = Path('sourcedata/JATOS/validated_data')
 VALIDATION_PROTOCOL = Path(VALIDATED_DATA / 'validation_protocol.tsv')
 DOWNLOAD_LOG        = Path('code/JATOS/logs/download.log')
