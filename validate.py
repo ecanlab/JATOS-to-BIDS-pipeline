@@ -102,10 +102,10 @@ def get_args() -> argparse.Namespace:
   )
 
   parser.add_argument(
-    '-s',
-    '--studies',
+    '-p',
+    '--projects',
     nargs='*',
-    help='one or more studies to validate'
+    help='one or more project to validate'
   )
 
   args = parser.parse_args()
@@ -713,7 +713,7 @@ class Validator():
 
     for project_dir in project_dirs:
       # Skip project if is not specified by the user
-      if self.args.studies and project_dir.name not in self.args.studies:
+      if self.args.projects and project_dir.name not in self.args.projects:
         continue
       self.log.info('-- %s --', project_dir.name)
 

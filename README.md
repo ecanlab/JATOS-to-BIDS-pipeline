@@ -495,17 +495,17 @@ See the [`.env` configuration](#env) section for information about the required 
 
 Both `download.py` and `validate.py` support the following argument:
 
-| Argument | Description |
+| Flag | Description |
 |---|---|
-| `-s`, `--studies` | One or more studies to download or validate. If omitted, all studies are processed. |
+| `-p`, `--projects` | One or more project to download or validate. If omitted, all project are processed. |
 
 ### Example
 
-To download one or more specific studies:
+To download one or more specific project:
 ```Bash
-python download.py --studies STUDY_NAME
+python download.py --projects STUDY_NAME
 ```
 Multiple studies can be specified:
 ```Bash
-python download.py --studies STUDY_NAME_1 STUDY_NAME_2 STUDY_NAME_3
+python download.py --projects STUDY_NAME_1 STUDY_NAME_2 STUDY_NAME_3
 ```

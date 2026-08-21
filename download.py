@@ -60,10 +60,10 @@ def get_args() -> argparse.Namespace:
   )
 
   parser.add_argument(
-    '-s',
-    '--studies',
+    '-p',
+    '--projects',
     nargs='*',
-    help='one or more studies to download'
+    help='one or more project to download'
   )
 
   args = parser.parse_args()
@@ -541,8 +541,8 @@ class JatosDownloader:
         )
         # Skip project if is not specified by the user
         if (
-          self.args.studies
-          and self.state.project_title not in self.args.studies
+          self.args.projects
+          and self.state.project_title not in self.args.projects
         ):
           continue
         try:
@@ -556,7 +556,7 @@ class JatosDownloader:
       project_dirs = utils.get_all_project_dirs(self.project_root)
       for project_dir in project_dirs:
         # Skip project if is not specified by the user
-        if self.args.studies and project_dir.name not in self.args.studies:
+        if self.args.projects and project_dir.name not in self.args.projects:
           continue
         try:
           self.download_results(project_dir)
