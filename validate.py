@@ -648,7 +648,8 @@ class Validator():
     pbar = tqdm(
       files,
       total=len(files),
-      desc=f'Processing {project_dir.name}: '
+      desc=f'Processing {project_dir.name}: ',
+      unit=' files'
     )
 
     for file in pbar:

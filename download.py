@@ -498,7 +498,8 @@ class JatosDownloader:
     pbar = tqdm(
       pending_rows.iterrows(),
       total=len(pending_rows),
-      desc=f'Downloading {self.state.project_title}: '
+      desc=f'Downloading {self.state.project_title}: ',
+      unit=' files'
     )
 
     for index, row in pbar:
@@ -531,7 +532,8 @@ class JatosDownloader:
       pbar = tqdm(
         studies,
         total=len(studies),
-        desc='Processing studies: '
+        desc='Processing studies: ',
+        unit=' studies'
       )
       for study in pbar:
         self.state.project_title = utils.regex(
