@@ -1,11 +1,17 @@
-import os
-import utils
-import config
-import shutil
+# Standard libray
 import logging
-import log as log_util
+import os
+import shutil
 from pathlib import Path
+
+# Third-party
 from dotenv import load_dotenv
+from tqdm import tqdm
+
+# Local
+import config
+import log as log_util
+import utils
 
 class BIDSifier():
   def __init__ (self, project_root: str, log: logging.Logger):
@@ -35,7 +41,14 @@ class BIDSifier():
         if f.name != 'id_corrections.tsv'
       ]
 
-      for file in files:
+      pbar = tqdm(
+        files,
+        total=len(files),
+        desc=f'BIDSifying {project_dir.name}: ',
+        unit=' files'
+      )
+
+      for file in pbar:
         sub = utils.regex(file.name, config.REGEX_SUB)
         ses = utils.regex(file.name, config.REGEX_PROJECT_SES)
         task = utils.regex(file.name, config.REGEX_PROJECT_TASK)
