@@ -625,7 +625,10 @@ class Validator():
 
       result = utils.create_df_with_headers(mapping)
       result = self.populate_result(result, mapping, data)
-      filename = file.name.replace('.txt.gz', '.tsv')
+      filename = file.name.replace(
+        '.txt.gz',
+        f'_{task_info.version}.tsv'
+      )
 
       if action == config.Action.REASSIGN_ID:
         filename = self._new_filename(rid, sub, action, filename)
