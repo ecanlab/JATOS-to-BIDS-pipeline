@@ -17,6 +17,7 @@ from tqdm import tqdm
 
 # Local
 from config import ValidationError
+from config import NewValidationProtocol
 from config import FileError
 from config import NoTitleFound
 from config import TaskInfo
@@ -566,12 +567,12 @@ class Validator():
 
     return result
 
-  def _new_filename(self, rid: int, pid: int, action: str, filename: str) -> str:
-    new_pid = str(int(self._get_argument(rid, pid, action)))
-    match = utils.regex(filename, config.REGEX_SUB, group=None)
+  def _new_filename(self, filename: str, regex: str, new_part: str) -> str:
+    match = utils.regex(filename, regex, group=None)
     start = filename[:match.start()]
     end   = filename[match.end():]
-    filename = start  + 'sub-' + new_pid + end
+    prefix = utils.regex(regex, config.REGEX_PREFIX)
+    filename = start  + prefix + new_part + end
 
     return filename
 
@@ -625,15 +626,21 @@ class Validator():
 
       result = utils.create_df_with_headers(mapping)
       result = self.populate_result(result, mapping, data)
-      filename = file.name.replace(
+      filename = self._new_filename(
+        file.name, config.REGEX_PROJECT_TASK, task_info.name
+      )
+
+      filename = filename.replace(
         '.txt.gz',
         f'_{task_info.version}.tsv'
       )
 
       if action == config.Action.REASSIGN_ID:
-        filename = self._new_filename(rid, sub, action, filename)
+        new_pid = str((self._get_argument(rid, pid, action)))
+        filename = self._new_filename(filename, config.REGEX_SUB, new_pid)
 
       filepath = path / filename
+
       self.log.debug('Saving validated data to %s', filepath.name)
       result.to_csv(filepath, sep='\t', index=False)
 

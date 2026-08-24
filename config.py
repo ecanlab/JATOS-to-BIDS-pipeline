@@ -10,6 +10,7 @@ RAW_DATA            = Path('sourcedata/JATOS/raw_data/')
 RESULT_INDEX        = Path(RAW_DATA / 'result_index.tsv')
 PROJECT_CONFIG      = Path('code/JATOS/project_config.json')
 CODE_JATOS          = Path('code/JATOS/')
+TASK_CONFIGS        = Path('code/JATOS/project_configs')
 VALIDATED_DATA      = Path('sourcedata/JATOS/validated_data')
 VALIDATION_PROTOCOL = Path(VALIDATED_DATA / 'validation_protocol.tsv')
 DOWNLOAD_LOG        = Path('code/JATOS/logs/download.log')
@@ -34,6 +35,7 @@ REGEX_SUB            = r'sub-([^_]+)'
 REGEX_RESULT_RID     = r'rid-([^_]+)'
 REGEX_TASK_NAME      = r'^(?:(?!\bv\.\d+(?:\.\d+)*\b).)*'
 REGEX_TASK_VERSION   = r'v\.\d+(?:\.\d+)*'
+REGEX_PREFIX         = r'[a-z]+-'
 
 # Time
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%S"
