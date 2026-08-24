@@ -7,88 +7,23 @@ import json
 import logging
 import os
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 # Third-party
 import pandas as pd
 from dotenv import load_dotenv
-from pydantic import BaseModel
 from tqdm import tqdm
 
 # Local
+from config import ValidationError
+from config import FileError
+from config import NoTitleFound
+from config import TaskInfo
+from config import ProjectConfig
 import config
 import log as log_util
 import utils
-
-@dataclass
-class Version(BaseModel):
-  """Used to find the mapping for a task."""
-  mapping: dict[str, str]
-
-@dataclass
-class Task(BaseModel):
-  """Used to find specific version of a task."""
-  version: dict[str, Version]
-
-@dataclass
-class Ids(BaseModel):
-  """IDs in a project."""
-  ids: list[str]
-
-@dataclass
-class Project(BaseModel):
-  """Used to find all IDs in a project."""
-  title: dict[Ids, str]
-
-@dataclass
-class ProjectConfig(BaseModel):
-  """JSON structure for project config that contains tasks and projects."""
-  task: dict[str, Task]
-  project: dict[str, Ids] | None = None
-
-@dataclass
-class TaskInfo:
-  """Holds the current task's info."""
-  title: str
-  name: str
-  version: str
-
-class ValidationError(Exception):
-  """Base class for validation errors."""
-
-class  ValidationProtocolHaveMoreRows(ValidationError):
-  """Raised when validation protocol have more rows than validation protocol."""
-
-class NewValidationProtocol(ValidationError):
-  """Raised when a new validation_protocol.tsv is created in a project."""
-
-class MissingAction(ValidationError):
-  """Raised when a action is missing for a line in the validation_protocol.tsv.
-  """
-
-class MissingArgument(ValidationError):
-  """Raised when an Argument is missing for a action in validation_protocol.tsv.
-  """
-
-class WrongAction(ValidationError):
-  """Raised when a wrong action is specified in validation_protocol.tsv."""
-
-class FileError(Exception):
-  """Base class for file error."""
-
-class BadZipFile(FileError):
-  """Raised when a zipfile cannot be opend."""
-
-class JSONDecodeError(FileError):
-  """Raised when JSON structure cannot be loaded."""
-
-class NoDataInFile(FileError):
-  """Raised when there is only one symbol in data."""
-
-class NoTitleFound(Exception):
-  """Raised when no title could be found in data."""
 
 def get_args() -> argparse.Namespace:
   """

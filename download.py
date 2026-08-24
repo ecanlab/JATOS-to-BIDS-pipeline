@@ -21,31 +21,11 @@ from tqdm import tqdm
 
 # Local
 import config
+from config import StudyInfo
+from config import AppConfig
+from config import StudyState
 import log as log_util
 import utils
-
-@dataclass
-class StudyInfo:
-  """Holds basic information about a study."""
-  participant_id: int
-  uuid: str
-  title: str
-
-@dataclass
-class AppConfig:
-  """Holds Basic settings for the server and project."""
-  base_url: str
-  api_token: str
-  project_root: Path
-
-@dataclass
-class StudyState:
-  """Holds the current study's state."""
-  study_id:      int | None = None
-  study_uuid:    str | None = None
-  result_id:     str | None = None
-  study_title:   str | None = None
-  project_title: str | None = None
 
 def get_args() -> argparse.Namespace:
   """
