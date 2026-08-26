@@ -8,7 +8,6 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any
 
 # Third-party
 import pandas as pd
@@ -16,17 +15,23 @@ from dotenv import load_dotenv
 from tqdm import tqdm
 
 # Local
+from config import BadZipFile
+from config import FileError
 from config import ValidationError
 from config import MissingAction
+from config import MissingArgument
 from config import NewValidationProtocol
-from config import FileError
+from config import JSONDecodeError
 from config import NoTitleFound
-from config import TaskInfo
+from config import NoDataInFile
 from config import ProjectConfig
-from utils import ConfigLoader
+from config import TaskInfo
+from config import ValidationProtocolHaveMoreRows
+from config import WrongAction
 import config
 import log as log_util
 import utils
+from utils import ConfigLoader
 
 def get_args() -> argparse.Namespace:
   """
@@ -223,11 +228,11 @@ class Validator():
     self.validation_protocol.to_csv(path, sep='\t', index=False)
 
     self.log.info(
-      'Created %s, in %s validated data, please fill in an action for each '
+      'Created %s, in %s, please fill in an action for each '
       'row. Read the documentation for information about the different '
       'actions',
       path.name,
-      self.current_project_title
+      project_dir.name / config.VALIDATED_DATA
     )
     raise NewValidationProtocol("New validation_protocol.tsv was created")
 
@@ -559,11 +564,11 @@ class Validator():
 
     # jsPsych structure
     if isinstance(data, list):
-       self.log.debug(
+      self.log.debug(
         'Found jsPsych structure in the raw data, collecting variables'
       )
-       for trial in data:
-         result.loc[len(result)] = [trial.get(k, None) for k in mapping.values()]
+      for trial in data:
+        result.loc[len(result)] = [trial.get(k, None) for k in mapping.values()]
 
     return result
 
@@ -634,7 +639,7 @@ class Validator():
       filename += f'_{task_info.version}.tsv'
 
       if action == config.Action.REASSIGN_ID:
-        new_pid = str((self._get_argument(rid, pid, action)))
+        new_pid = str((self._get_argument(rid, sub, action)))
         filename = self._new_filename(filename, config.REGEX_SUB, new_pid)
 
       filepath = path / filename
