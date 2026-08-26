@@ -1,8 +1,13 @@
+"""Configurations for the main scripts."""
+
+# Standard library
+from dataclasses import dataclass
 import datetime
 from enum import Enum
-from pydantic import BaseModel
 from pathlib import Path
-from dataclasses import dataclass
+
+# Third-party
+from pydantic import BaseModel
 
 # Paths
 SOURCE_JATOS        = Path('sourcedata/JATOS')
@@ -53,6 +58,7 @@ TITLE_KEYS = ['test_version']
 
 # ID correction actions
 class Action(Enum):
+  """The different actions the user can choose for a downloaded result."""
   KEEP = 'keep'
   REASSIGN_ID = 'reassign_id'
   EXCLUDE = 'exclude'
@@ -61,10 +67,12 @@ actions = {action.value for action in Action}
 
 # BaseModel
 class VersionConfig(BaseModel):
+  """Usef to find the mapping and the metadata for a version."""
   mapping: dict[str, str]
   metadata: dict[str, str] | None = None
 
 class TaskConfig(BaseModel):
+  """Used to find the version of a task."""
   version: dict[str, VersionConfig]
 
 class Version(BaseModel):
@@ -145,6 +153,3 @@ class NoDataInFile(FileError):
 
 class NoTitleFound(Exception):
   """Raised when no title could be found in data."""
-
-class NoProjectConfig(Exception):
-  """Raised when no project config file was found."""
