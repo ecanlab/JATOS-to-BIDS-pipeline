@@ -71,7 +71,7 @@ See [.env configuration](#configuration-env) for configuration.
 │       ├── project_configs/
 │       │   └── [project].json
 |       └── task_configs/
-│           └── task.json
+│           └── [task].json
 └── project/
     └── sourcedata/
         ├── JATOS/
