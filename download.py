@@ -9,7 +9,6 @@ import logging
 import os
 import sys
 import zipfile
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -426,8 +425,8 @@ class JatosDownloader:
 
   @staticmethod
   def _construct_result_filename(title: str, pid: str, rid: int) -> str:
-    ses  = utils.regex(title, config.REGEX_PROJECT_SES)
-    task = utils.regex(title, config.REGEX_PROJECT_TASK)
+    ses  = utils.regex(title, config.REGEX_SES)
+    task = utils.regex(title, config.REGEX_TASK)
 
     filename = f'sub-{pid}_rid-{rid}_'
     if ses:
