@@ -1,14 +1,19 @@
 # Standard libray
+import json
 import logging
 import os
 import shutil
+import sys
 from pathlib import Path
+from typing import Any
 
 # Third-party
 from dotenv import load_dotenv
 from tqdm import tqdm
 
 # Local
+from config import NoProjectConfig
+from utils import ConfigLoader
 import config
 import log as log_util
 import utils
@@ -17,6 +22,7 @@ class BIDSifier():
   def __init__ (self, project_root: str, log: logging.Logger):
     self.project_root = Path(project_root)
     self.log = log
+    self.configs = ConfigLoader(project_root / config.TASK_CONFIGS)
 
   def run(self):
     project_dirs = utils.get_all_project_dirs(self.project_root)
@@ -28,6 +34,12 @@ class BIDSifier():
 
     for project_dir in project_dirs:
 
+      path_task_config = (
+        self.project_root /
+        config.CODE_JATOS /
+        Path(project_dir.name + '.json')
+      )
+
       path_validated_data = project_dir / config.VALIDATED_DATA
 
       self.log.info(
@@ -38,7 +50,7 @@ class BIDSifier():
 
       files = [
         f for f in path_validated_data.glob('*.tsv')
-        if f.name != 'id_corrections.tsv'
+        if f.name != config.VALIDATION_PROTOCOL.name
       ]
 
       pbar = tqdm(
@@ -49,9 +61,11 @@ class BIDSifier():
       )
 
       for file in pbar:
-        sub = utils.regex(file.name, config.REGEX_SUB)
-        ses = utils.regex(file.name, config.REGEX_PROJECT_SES)
-        task = utils.regex(file.name, config.REGEX_PROJECT_TASK)
+        sub      = utils.regex(file.name, config.REGEX_SUB)
+        ses      = utils.regex(file.name, config.REGEX_SES)
+        task     = utils.regex(file.name, config.REGEX_TASK, 1)
+        taskname = utils.regex(file.name, config.REGEX_TASKNAME, 1)
+        version  = utils.regex(file.name, config.REGEX_VERSION, 1)
 
         path = project_dir / sub
 
@@ -62,11 +76,31 @@ class BIDSifier():
         path.mkdir(parents=True, exist_ok=True)
 
         filename = f'{sub}_'
+
         if ses:
           filename += f'{ses}_'
 
-        filename += f'{task}_beh.tsv'
-        shutil.copyfile(file, path / filename)
+        filename += f'{task}_beh'
+
+        data_filename = filename + '.tsv'
+        sidecar_filename = filename + '.json'
+
+        shutil.copyfile(file, path / data_filename)
+
+        try:
+          task_config = self.configs.get_config(taskname)
+          sidecar = task_config.version[version].metadata
+          if sidecar:
+            with open(path / sidecar_filename, 'w') as file:
+              json.dump(sidecar, file, indent=2)
+
+        except FileNotFoundError:
+          self.log.debug('Could not find %s.json', taskname)
+
+        except KeyError:
+          self.log.debug(
+            'Could not find version %s in %s.json', version, taskname
+          )
 
     self.log.info('BIDSification completed')
 

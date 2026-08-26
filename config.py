@@ -8,9 +8,9 @@ from dataclasses import dataclass
 SOURCE_JATOS        = Path('sourcedata/JATOS')
 RAW_DATA            = Path('sourcedata/JATOS/raw_data/')
 RESULT_INDEX        = Path(RAW_DATA / 'result_index.tsv')
-PROJECT_CONFIG      = Path('code/JATOS/project_config.json')
+PROJECT_CONFIGS     = Path('code/JATOS/project_configs/')
 CODE_JATOS          = Path('code/JATOS/')
-TASK_CONFIGS        = Path('code/JATOS/project_configs')
+TASK_CONFIGS        = Path('code/JATOS/task_configs/')
 VALIDATED_DATA      = Path('sourcedata/JATOS/validated_data')
 VALIDATION_PROTOCOL = Path(VALIDATED_DATA / 'validation_protocol.tsv')
 DOWNLOAD_LOG        = Path('code/JATOS/logs/download.log')
@@ -29,12 +29,14 @@ RESULT_INDEX_HEADERS = [
 
 # Regex
 REGEX_PROJECT_TITLE  = r'^[^_]+'
-REGEX_PROJECT_SES    = r'ses-[^_]+'
-REGEX_PROJECT_TASK   = r'task-[^.]+'
+REGEX_SES            = r'ses-[^_]+'
 REGEX_SUB            = r'sub-([^_]+)'
-REGEX_RESULT_RID     = r'rid-([^_]+)'
+REGEX_RID            = r'rid-([^_]+)'
+REGEX_TASK           = r'task-([^_]+)'
+REGEX_TASKNAME       = r'taskname-([^.]+)_'
 REGEX_TASK_NAME      = r'^(?:(?!\bv\.\d+(?:\.\d+)*\b).)*'
 REGEX_TASK_VERSION   = r'v\.\d+(?:\.\d+)*'
+REGEX_VERSION        = r'_(v[a-zA-Z0-9.]+).tsv'
 REGEX_PREFIX         = r'[a-z]+-'
 
 # Time
@@ -58,16 +60,12 @@ class Action(Enum):
 actions = {action.value for action in Action}
 
 # BaseModel
-class Metadata(BaseModel):
-    TaskName: str
-    TaskDescription: str
-
 class VersionConfig(BaseModel):
-    mapping: dict[str, str]
-    metadata: Metadata
+  mapping: dict[str, str]
+  metadata: dict[str, str] | None = None
 
 class TaskConfig(BaseModel):
-    version: dict[str, VersionConfig]
+  version: dict[str, VersionConfig]
 
 class Version(BaseModel):
   """Used to find the mapping for a task."""
@@ -77,18 +75,9 @@ class Task(BaseModel):
   """Used to find specific version of a task."""
   version: dict[str, Version]
 
-class Ids(BaseModel):
-  """IDs in a project."""
-  ids: list[str]
-
-class Project(BaseModel):
-  """Used to find all IDs in a project."""
-  title: dict[Ids, str]
-
 class ProjectConfig(BaseModel):
-  """JSON structure for project config that contains tasks and projects."""
-  task: dict[str, Task]
-  project: dict[str, Ids] | None = None
+  """JSON structure for project config that contains project IDs."""
+  IDs: list[str] | None = None
 
 # Dataclasses
 @dataclass

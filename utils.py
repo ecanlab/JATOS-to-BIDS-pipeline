@@ -1,8 +1,52 @@
 import re
 import config
 import datetime
+import json
 import pandas as pd
 from pathlib import Path
+from config import TaskConfig
+
+class ConfigLoader:
+  """Loads projects config files and validates the structure."""
+  def __init__(self, path: Path):
+    self.path = path
+    self._configs = {}
+
+  def get_config(self, name: str) -> TaskConfig:
+    """Get project config file, if it is not allready loaded, load it.
+
+    Args:
+      name: Name of the project.
+
+    Return:
+      A TaskConfig.
+    """
+    if not name in self._configs:
+      self._configs[name] = self._load_config(name)
+
+    return self._configs[name]
+
+  def _load_config(self, name: str) -> TaskConfig:
+    path = self.path / f'{name}.json'
+
+    try:
+      with open(path, 'r', encoding="utf-8") as file:
+        data = json.load(file)
+
+    except json.JSONDecodeError as error:
+      raise
+
+    except FileNotFoundError as error:
+      raise
+
+    return self._validate_data(data)
+
+  def _validate_data(self, data: TaskConfig) -> TaskConfig:
+    try:
+      return TaskConfig.model_validate(data)
+
+    except ValidationError as error:
+      rasie
 
 def create_df_with_headers(headers: dict | list) -> pd.DataFrame:
   """Creates a dataframe and populate the columns with titles.
@@ -37,7 +81,7 @@ def get_all_project_dirs(project_root: Path) -> list[Path]:
   """
   dirs = []
   for dir in project_root.iterdir():
-    if Path(dir / config.JATOS_FOLDER).is_dir():
+    if Path(dir / config.SOURCE_JATOS).is_dir():
       dirs.append(dir)
   return dirs
 

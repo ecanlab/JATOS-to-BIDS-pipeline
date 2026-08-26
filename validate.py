@@ -17,11 +17,13 @@ from tqdm import tqdm
 
 # Local
 from config import ValidationError
+from config import MissingAction
 from config import NewValidationProtocol
 from config import FileError
 from config import NoTitleFound
 from config import TaskInfo
 from config import ProjectConfig
+from utils import ConfigLoader
 import config
 import log as log_util
 import utils
@@ -66,55 +68,14 @@ class Validator():
     self.args = args
     self.log = log
 
-    self.result_index: pd.DataFrame        | None = None
-    self.validation_protocol: pd.DataFrame | None = None
-    self.project_config: ProjectConfig     | None = None
-    self.current_project_title: str        | None = None
+    self.configs = ConfigLoader(project_root / config.TASK_CONFIGS)
+
+    self.result_index: pd.DataFrame            | None = None
+    self.validation_protocol: pd.DataFrame     | None = None
+    self.current_project_config: ProjectConfig | None = None
+    self.current_project_title: str            | None = None
 
     self.tasks_with_no_mapping = set()
-
-  def load_project_config(self) -> dict[str, Any]:
-    """Load project config json file.
-
-    Args:
-      path: Path to project config json file.
-
-    Returns:
-      A dictonary with the content from the json file.
-    """
-    path = self.project_root / config.PROJECT_CONFIG
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    if not path.is_file():
-      self.log.critical(
-        'Did not find project_config.json in %s. Create the file and fill out '
-        'the structure according to the documentation.',
-        path
-      )
-      sys.exit(1)
-
-    self.log.info('Found project_config.json')
-
-    try:
-      with open(path, 'r', encoding="utf-8") as file:
-        return json.load(file)
-
-    except json.JSONDecodeError as error:
-      self.log.critical('Ivalid JSON in project config: %s', error)
-      sys.exit(1)
-
-  def validate_project_config(self, project_config: dict) -> ProjectConfig:
-    """Validates project config JSON file based on it's structure.
-
-    Args: project_config: The project config dictonary.
-    """
-    try:
-      self.log.info('Validating project config')
-      return ProjectConfig.model_validate(project_config)
-
-    except ValidationError as error:
-      self.log.critical('Could not validate json structure: %s', error)
-      sys.exit(1)
 
   def _check_validated_data_dir(self, validated_data_dir: Path):
     """Check if the validated data directory is empty and inform the user."""
@@ -123,6 +84,32 @@ class Validator():
         '%s is not empty, clear the directory for a clean run',
         validated_data_dir.name
       )
+
+  def load_project_config(self, path: Path) -> ProjectConfig | None:
+    """Load project config file.
+
+    Args:
+      path: Path to result index tsv.
+
+    Returns:
+      ProjectConfig
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.is_file():
+      self.log.info(
+        'Did not find %s.json in %s, creat it if you want the script to '
+        'automatically check if all IDs are part of the project',
+        path.name,
+        config.PROJECT_CONFIGS
+      )
+      return None
+
+    self.log.info('Found %s', path.name,)
+
+    with open(path, 'r', encoding="utf-8") as file:
+      data = json.load(file)
+
+    return ProjectConfig.model_validate(data)
 
   def load_result_index(self, path: Path):
     """Load result index tsv file.
@@ -252,17 +239,18 @@ class Validator():
     """
     self.log.info('Checking if all participant IDs are part of the project')
 
-    try:
-      project = self.project_config.project.get(self.current_project_title)
-      project_ids = project.ids
+    if not self.current_project_config:
+      return
 
-    except Exception:  # pylint: disable=broad-except
+    project_ids = self.current_project_config.IDs
+
+    if not project_ids:
       self.log.info(
         'Did not find IDs for %s in %s, update %s if you want the script '
         'to automatically check if all IDs are part of the project',
         self.current_project_title,
-        config.PROJECT_CONFIG.name,
-        config.PROJECT_CONFIG.name
+        self.current_project_config.name,
+        self.current_project_config.name,
       )
       self.validation_protocol['id_not_in_project'] = pd.NA
       return
@@ -314,7 +302,7 @@ class Validator():
 
     duplicates = self.validation_protocol.duplicated(
       keep=False,
-      subset=['study_title','participant_id']
+      subset=['study_id','participant_id']
     )
 
     # Check if all values in 'duplicate_id' are 'None'
@@ -325,6 +313,7 @@ class Validator():
         return
 
       self.log.info('No duplicate IDs found')
+      self.validation_protocol['duplicate_id'] = duplicates
       return
 
     # Check if any value in 'duplicate_id' are 'None'
@@ -511,25 +500,36 @@ class Validator():
 
     return TaskInfo(title=title, name=name.strip(), version=version)
 
-  def get_mapping(self, task_info: TaskInfo) -> dict:
-    """Loads mapping for a task version.
-
-    Args: task_info: Info about the task.
-
-    Returns: A dictonary that contains variables names for a spcific task.
-    """
+  def _load_mapping(self, task_info: TaskInfo) -> dict | None:
     try:
-      self.log.debug('Loading mapping for %s', task_info.title)
-      task = self.project_config.task[task_info.name]
-      version = task.version[task_info.version]
-      return version.mapping
+      task_config = self.configs.get_config(task_info.name)
+      mapping = task_config.version[task_info.version].mapping
+      self.log.debug('Found %s.json', task_info.name)
+      self.log.debug('Validating %s.json', task_info.name)
 
-    except KeyError as error:
-      self.tasks_with_no_mapping.add(task_info.title)
-      self.log.error('Could not find mapping for %s, make sure to fill out '
-      'the project_config.json. %s'
-      , task_info.title, error)
-      self.log.info('Looking trough the rest of the files for other versions')
+    except json.JSONDecodeError as error:
+      self.log.warning('Invalid JSON in project config: %s', error)
+      return None
+
+    except ValidationError as error:
+      self.log.warning('Could not validate JSON structure: %s', error)
+      return None
+
+    except FileNotFoundError as error:
+      self.log.error(
+        'Did not find %s.json in %s', task_info.name, config.TASK_CONFIGS
+      )
+      self.tasks_with_no_mapping.add(task_info.name)
+      return None
+
+    except KeyError:
+      self.log.debug(
+        'Could not find mapping for version %s in %s.json',
+        task_info.version, task_info.name
+      )
+      return None
+
+    return mapping
 
   def populate_result(
       self,
@@ -590,7 +590,7 @@ class Validator():
 
     for file in pbar:
       pbar.set_postfix(file=file.name)
-      rid = int(utils.regex(file.name, config.REGEX_RESULT_RID, group=1))
+      rid = int(utils.regex(file.name, config.REGEX_RID, group=1))
       sub = utils.regex(file.name, config.REGEX_SUB, group=1)
 
       action = self._get_action(rid)
@@ -607,9 +607,11 @@ class Validator():
 
       try:
         task_info = self._get_task_info(data)
+
       except FileError as error:
         self.log.debug(f'Error loading file {file.name}: {error}')
         continue
+
       except NoTitleFound:
         self.log.critical(
           'Could not find title in %s data add title key in config',
@@ -617,23 +619,19 @@ class Validator():
         )
         continue
 
-      if task_info.title in self.tasks_with_no_mapping:
+      if task_info.name in self.tasks_with_no_mapping:
         continue
 
-      mapping = self.get_mapping(task_info)
+      mapping = self._load_mapping(task_info)
       if not mapping:
         continue
 
       result = utils.create_df_with_headers(mapping)
       result = self.populate_result(result, mapping, data)
-      filename = self._new_filename(
-        file.name, config.REGEX_PROJECT_TASK, task_info.name
-      )
-
-      filename = filename.replace(
-        '.txt.gz',
-        f'_{task_info.version}.tsv'
-      )
+      filename = file.name
+      filename = filename.replace('.txt.gz', '')
+      filename += f'_taskname-{task_info.name}'
+      filename += f'_{task_info.version}.tsv'
 
       if action == config.Action.REASSIGN_ID:
         new_pid = str((self._get_argument(rid, pid, action)))
@@ -646,9 +644,6 @@ class Validator():
 
   def run(self):
     """Execute the validate workflow."""
-    project_config = self.load_project_config()
-    self.project_config = self.validate_project_config(project_config)
-
     project_dirs = utils.get_all_project_dirs(self.project_root)
     if not project_dirs:
       self.log.critical(
@@ -663,6 +658,11 @@ class Validator():
       self.log.info('-- %s --', project_dir.name)
 
       self.current_project_title = project_dir.name
+      self.current_project_config = self.load_project_config(
+        self.project_root /
+        config.PROJECT_CONFIGS /
+        project_dir.with_suffix('.json').name
+      )
       path = project_dir / config.VALIDATED_DATA
       path.mkdir(True, exist_ok=True)
 
@@ -678,6 +678,7 @@ class Validator():
 
       self._check_validated_data_dir(path)
       self._process_project_files(project_dir, path)
+      self.current_project_config = None
 
     self.log.info('Validation completed')
 
