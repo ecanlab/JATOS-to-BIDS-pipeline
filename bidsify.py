@@ -1,3 +1,5 @@
+"""BIDSify data downloaded from JATOS."""
+
 # Standard libray
 import argparse
 import json
@@ -6,14 +8,12 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Any
 
 # Third-party
 from dotenv import load_dotenv
 from tqdm import tqdm
 
 # Local
-from config import NoProjectConfig
 from utils import ConfigLoader
 import config
 import log as log_util
@@ -42,6 +42,13 @@ def get_args() -> argparse.Namespace:
   return args
 
 class BIDSifier():
+  """BIDSify downloaded data from JATOS.
+
+  Attributes:
+    project_root: Path to where data have been downloaded.
+    args: User terminal arguments.
+    log: Logger.
+  """
   def __init__ (
       self,
       project_root: str,
@@ -53,7 +60,27 @@ class BIDSifier():
     self.log          = log
     self.configs      = ConfigLoader(project_root / config.TASK_CONFIGS)
 
+  def _make_filenames(self, path: Path, ses: str, sub: str, task: str) -> str:
+    if ses:
+      path /= ses
+
+    path /= 'beh'
+    path.mkdir(parents=True, exist_ok=True)
+
+    filename = f'{sub}_'
+
+    if ses:
+      filename += f'{ses}_'
+
+    filename += f'{task}_beh'
+
+    data_filename = filename + '.tsv'
+    sidecar_filename = filename + '.json'
+
+    return data_filename, sidecar_filename
+
   def run(self):
+    """Execute the BIDSify workflow."""
     project_dirs = utils.get_all_project_dirs(self.project_root)
     if not project_dirs:
       self.log.critical(
@@ -65,12 +92,6 @@ class BIDSifier():
       # Skip project if is not specified by the user
       if self.args.projects and project_dir.name not in self.args.projects:
         continue
-
-      path_task_config = (
-        self.project_root /
-        config.CODE_JATOS /
-        Path(project_dir.name + '.json')
-      )
 
       path_validated_data = project_dir / config.VALIDATED_DATA
 
@@ -109,21 +130,9 @@ class BIDSifier():
 
         path = project_dir / sub
 
-        if ses:
-          path /= ses
-
-        path /= 'beh'
-        path.mkdir(parents=True, exist_ok=True)
-
-        filename = f'{sub}_'
-
-        if ses:
-          filename += f'{ses}_'
-
-        filename += f'{task}_beh'
-
-        data_filename = filename + '.tsv'
-        sidecar_filename = filename + '.json'
+        data_filename, sidecar_filename = self._make_filenames(
+                                              path, ses, sub, task
+                                            )
 
         shutil.copyfile(file, path / data_filename)
 
@@ -131,7 +140,7 @@ class BIDSifier():
           task_config = self.configs.get_config(taskname)
           sidecar = task_config.version[version].metadata
           if sidecar:
-            with open(path / sidecar_filename, 'w') as file:
+            with open(path / sidecar_filename, 'w', encoding="utf-8") as file:
               json.dump(sidecar, file, indent=2)
 
         except FileNotFoundError:
@@ -144,7 +153,8 @@ class BIDSifier():
 
     self.log.info('BIDSification completed')
 
-if __name__ == "__main__":
+
+def main():
   """Load configuration and start the BIDSifyer."""
   args = get_args()
 
@@ -153,10 +163,13 @@ if __name__ == "__main__":
 
   if not project_root:
     print('project_root must be set in .env file')
-    exit()
+    sys.exit(1)
 
   log = log_util.setupLogging(project_root / config.VALIDATE_LOG)
   log.info('Configuration loaded successfully')
 
   bidsifier = BIDSifier(project_root, args, log)
   bidsifier.run()
+
+if __name__ == "__main__":
+  main()
