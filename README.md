@@ -473,7 +473,7 @@ All basic scripts `download.py`, `validate.py` and `bidsify.py` support the foll
 |---|---|
 | `-p`, `--projects` | One or more project to download or validate. If omitted, all project are processed. |
 
-### Example
+#### Example
 
 To download one or more specific project:
 ```Bash
@@ -483,3 +483,16 @@ Multiple studies can be specified:
 ```Bash
 python download.py --projects STUDY_NAME_1 STUDY_NAME_2 STUDY_NAME_3
 ```
+
+### Pipeline
+#### Example
+```Bash
+python download.py
+python validate.py
+```
+Fill in an action for each row in [validation_protocol.tsv](#user-defined-actions).
+```Bash
+python validate.py
+python bidsify.py
+```
+And you are done!
