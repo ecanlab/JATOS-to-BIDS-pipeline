@@ -36,7 +36,7 @@ Contains the result metadata from `result_index.tsv`, together with validation i
 
 ### `[task].json`
 
-Created by the user, where [task] is the name of the task specified [here](#naming-convention).
+Created by the user, where [task] is the name of the task specified in the [task](#task-and-version).
 
 Contains the schema mapping for each version of the task.
 
@@ -44,7 +44,7 @@ See [task.json configuration](#configuration-task) for configuration.
 
 ### `[project].json`
 
-Created by the user, where [project] is the project name specified [here](#naming-convention).
+Created by the user, where [project] is the project name specified in [JATOS](#jatos-study-name).
 
 Contains all participant IDs that are part of a project. The IDs are used during validation.
 
