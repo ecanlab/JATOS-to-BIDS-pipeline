@@ -1,10 +1,18 @@
-import re
-import config
+"""Utility functions for the main scripts.."""
+
+# Standard library
 import datetime
 import json
-import pandas as pd
+import re
 from pathlib import Path
+
+# Third-party
+import pandas as pd
+
+# Local
+import config
 from config import TaskConfig
+
 
 class ConfigLoader:
   """Loads projects config files and validates the structure."""
@@ -29,24 +37,13 @@ class ConfigLoader:
   def _load_config(self, name: str) -> TaskConfig:
     path = self.path / f'{name}.json'
 
-    try:
-      with open(path, 'r', encoding="utf-8") as file:
-        data = json.load(file)
-
-    except json.JSONDecodeError as error:
-      raise
-
-    except FileNotFoundError as error:
-      raise
+    with open(path, 'r', encoding="utf-8") as file:
+      data = json.load(file)
 
     return self._validate_data(data)
 
   def _validate_data(self, data: TaskConfig) -> TaskConfig:
-    try:
-      return TaskConfig.model_validate(data)
-
-    except ValidationError as error:
-      rasie
+    return TaskConfig.model_validate(data)
 
 def create_df_with_headers(headers: dict | list) -> pd.DataFrame:
   """Creates a dataframe and populate the columns with titles.
@@ -58,15 +55,12 @@ def create_df_with_headers(headers: dict | list) -> pd.DataFrame:
   Returns:
     A pandas dataframe with column titles.
   """
-  try:
-    if isinstance(headers, dict):
-      columns = list(headers.keys())
-    if isinstance(headers, list):
-      columns = headers
-    return pd.DataFrame(columns=columns)
-  except Exception as e:
-    self.log.error('Could not create DataFrame: %s', e)
-    raise
+  columns = None
+  if isinstance(headers, dict):
+    columns = list(headers.keys())
+  if isinstance(headers, list):
+    columns = headers
+  return pd.DataFrame(columns=columns)
 
 def get_all_project_dirs(project_root: Path) -> list[Path]:
   """Get all directories in root that have soursdata/JATOS directories.
@@ -80,17 +74,16 @@ def get_all_project_dirs(project_root: Path) -> list[Path]:
     A list with all project directories.
   """
   dirs = []
-  for dir in project_root.iterdir():
-    if Path(dir / config.SOURCE_JATOS).is_dir():
-      dirs.append(dir)
+  for directory in project_root.iterdir():
+    if Path(directory / config.SOURCE_JATOS).is_dir():
+      dirs.append(directory)
   return dirs
 
-def regex(text: str, regex: str, group: int | None = 0) -> str | re.Match:
-  '''
-  Get the matching regex from a string.
+def regex(text: str, regex_str: str, group: int | None = 0) -> str:
+  """Get the matching regex from a string.
 
   PRE:
-    regex should be a raw string, r''
+    regex_str should be a raw string, r''
 
   ARGS:
     text: The string that will be searched.
@@ -98,9 +91,9 @@ def regex(text: str, regex: str, group: int | None = 0) -> str | re.Match:
     group: Specify a subgroups of the match or None to return the whole result.
 
   RETURNS:
-    str: The matching string or an empty string if nothing was found.
-  '''
-  result = re.search(regex, text)
+    The matching string or an empty string if nothing was found.
+  """
+  result = re.search(regex_str, text)
 
   if not result:
     return ''
@@ -111,19 +104,17 @@ def regex(text: str, regex: str, group: int | None = 0) -> str | re.Match:
   return result.group(group)
 
 def convert_to_local_tz(date_ms: float) -> str:
-  '''
-  Convert an float to local timezone with the format (YYYY-MM-DD HH-mm-ss)
-
-  PRE:
+  """Convert an float to local timezone with the format (YYYY-MM-DD HH-mm-ss)
+  Pre:
     date must be a date reprecented as miliseconds.
 
-  ARGS:
+  Args:
     date_ms (float): A date reprecented as miliseconds.
 
-  RETURNS:
+  Returns:
     str: The time with the format (YYYY-MM-DD HH-mm-ss) converted to the local
     timezone.
-  '''
+  """
   # Convert the date in ms to UTC format
   start_date_utc = datetime.datetime.fromtimestamp(
     date_ms / 1000.0,
