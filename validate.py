@@ -146,8 +146,7 @@ class Validator():
 
   def make_validation_protocol(self, project_dir: Path):
     """Creates a validation protocol that is a copy of result index with the
-    additonal columns 'action' and 'argument'. In theshe column the user will
-    specify what will happen to each result.
+    additonal columns id_not_in_project, duplicate_id, 'action' and 'argument'.
 
     Args:
       project_dir: The project folder.
@@ -204,16 +203,13 @@ class Validator():
 
       self.validate_pids()
 
-      self.validation_protocol.to_csv(path, sep='\t', index=False)
+      self._save_csv(self.validation_protocol, path)
 
       if new_rows.empty:
         self.log.info('%s is Up-To-Date', config.VALIDATION_PROTOCOL.name)
         return
 
-      try:
-        self.validation_protocol.to_csv(path, sep='\t' , index=False)
-      except OSError as error:
-        self.log.error('Could not save file %s: %s', path, error)
+      self._save_csv(self.validation_protocol, path)
 
       return
 
@@ -225,7 +221,7 @@ class Validator():
       'argument']] = None
 
     self.validate_pids()
-    self.validation_protocol.to_csv(path, sep='\t', index=False)
+    self.save_csv(self.validation_protocol, path)
 
     self.log.info(
       'Created %s, in %s, please fill in an action for each '
@@ -235,6 +231,14 @@ class Validator():
       project_dir.name / config.VALIDATED_DATA
     )
     raise NewValidationProtocol("New validation_protocol.tsv was created")
+
+    self._save_csv(self.validation_protocol, path)
+
+  def _save_csv(self, data: pd.DataFrame, path: Path):
+    try:
+      data.to_csv(path, sep='\t' , index=False)
+    except OSError as error:
+      self.log.error('Could not save file %s: %s', path.name, error)
 
   def find_id_not_in_project(self):
     """Update validation protocol with information about project membership.
@@ -300,8 +304,8 @@ class Validator():
     return
 
   def find_pid_duplicates(self):
-    """Find all participants IDs that are on multiple rows with the same study
-       title.
+    """Update validation protocol with information about participants IDs that
+      are on multiple rows with the same study ID.
     """
     self.log.info('Checking for duplicate participant IDs')
 
@@ -645,7 +649,7 @@ class Validator():
       filepath = path / filename
 
       self.log.debug('Saving validated data to %s', filepath.name)
-      result.to_csv(filepath, sep='\t', index=False)
+      self._save_csv(result, filepath)
 
   def run(self):
     """Execute the validate workflow."""
